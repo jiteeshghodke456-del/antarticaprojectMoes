@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Bridge view · Antarctic sea-ice navigation (SIH 26059)</title>
+<meta name="description" content="Decision support for ships resupplying India's Antarctic stations: real CMEMS sea-ice forecasts, forecast-aware routing, POLARIS and nine decision gates.">
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2312304d'/%3E%3Cpath d='M3 11 L8 4 L13 11 Z' fill='%23fff'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <div class="title">
+    <h1>Antarctic sea-ice navigation</h1>
+    <span>Decision support for the Bharati resupply run · SIH 26059 research demo</span>
+  </div>
+  <nav aria-label="Pages">
+    <a href="index.html" aria-current="page">Bridge</a>
+    <a href="pipeline.html">How it works</a>
+    <a href="evidence.html">Evidence</a>
+    <a href="https://github.com/jiteeshghodke456-del/antarticaprojectMoes/blob/main/docs/PROJECT_EXPLAINER.md">Explainer</a>
+  </nav>
+</header>
+
+<div class="timeline" aria-label="Forecast time">
+  <div class="cycle">
+    <label for="cycle">Forecast issued</label>
+    <button class="iconbtn" id="cyclePrev" aria-label="Earlier forecast">‹</button>
+    <select id="cycle"></select>
+    <button class="iconbtn" id="cycleNext" aria-label="Later forecast">›</button>
+  </div>
+  <div class="leads" id="leads" role="group" aria-label="Forecast day shown on the chart"></div>
+  <div class="validtime" id="validtime"></div>
+</div>
+
+<main class="bridge">
+  <div class="chartwrap" id="chartwrap">
+    <canvas id="base" aria-hidden="true"></canvas>
+    <canvas id="overlay" class="overlay" role="img" aria-label="Sea-ice chart with the planned route"></canvas>
+    <div class="readout" id="readout">Move over the chart to read the ice.</div>
+    <div class="layers" id="layers">
+      <div class="seg" role="group" aria-label="Chart field" style="margin-bottom:4px">
+        <button data-field="sic" aria-pressed="true">Concentration</button>
+        <button data-field="thk" aria-pressed="false">Thickness</button>
+      </div>
+      <label><input type="checkbox" data-layer="drift"> Ice drift</label>
+      <label><input type="checkbox" data-layer="static" checked> Plan on today's ice</label>
+      <label><input type="checkbox" data-layer="ref2019"> PolarRoute run, Dec 2019</label>
+      <label><input type="checkbox" data-layer="bergs" checked> Icebergs (USNIC)</label>
+      <label><input type="checkbox" data-layer="protected"> Protected areas (ATS)</label>
+    </div>
+    <div class="legend" id="legend"></div>
+  </div>
+
+  <aside class="rail" aria-label="Decision support">
+    <section>
+      <h2>Voyage plan <small id="vesselname"></small></h2>
+      <div class="field"><span>Destination</span>
+        <div class="seg" role="group" aria-label="Destination">
+          <button data-dest="approach" aria-pressed="true">Bharati approach</button>
+          <button data-dest="station" aria-pressed="false">Station edge</button>
+        </div>
+      </div>
+      <div class="field"><span>Ship position</span>
+        <div><span id="startpos"></span> <button class="btn" id="pickstart" aria-pressed="false">Move ship</button></div>
+      </div>
+      <div class="field"><span>Leave</span>
+        <select id="depart"></select>
+      </div>
+      <div class="field"><span>Ice limit</span>
+        <div class="rangeval"><input type="range" id="limit" min="40" max="95" step="5" value="80" aria-label="Working ice concentration limit"><b id="limitval">80%</b></div>
+      </div>
+      <div class="field"><span>Optimise for</span>
+        <div class="seg" role="group" aria-label="Objective">
+          <button data-obj="time" aria-pressed="true">Time</button>
+          <button data-obj="fuel" aria-pressed="false">Fuel</button>
+        </div>
+      </div>
+      <p class="small muted" style="margin-top:6px">The 80% limit is a working assumption from the source project. No ice class is defined by concentration, so treat it as a setting, not a certificate.</p>
+    </section>
+
+    <section>
+      <h2>Two ways to plan</h2>
+      <table class="compare" id="compare"></table>
+      <div id="planNote"></div>
+    </section>
+
+    <section>
+      <h2>Route health</h2>
+      <div class="health"><span class="state" id="healthState"></span><span class="small muted" id="healthWhy"></span></div>
+      <ol class="gates" id="gates"></ol>
+    </section>
+
+    <section>
+      <h2>POLARIS along the track <small>MSC.1/Circ.1519</small></h2>
+      <div class="field"><span>Ice stage</span>
+        <select id="stage"><option value="">Not declared</option></select>
+      </div>
+      <div id="polaris"></div>
+    </section>
+
+    <section>
+      <h2>Icebergs <small id="bergsrc"></small></h2>
+      <ul class="bergs" id="bergs"></ul>
+    </section>
+
+    <section>
+      <h2>Ice at the Bharati approach</h2>
+      <svg class="spark" id="spark" role="img" aria-label="Sea-ice concentration at the Bharati approach through the season"></svg>
+      <p class="small muted" id="sparknote"></p>
+    </section>
+
+    <section class="small muted">
+      <p>Ice data: Copernicus Marine Service global analysis and forecast (GLO12, 1/12°), harvested once a day by the project's GitHub Action and averaged here to 0.25° cells. Routing, POLARIS and the gate logic run in your browser, ported from the project's Python. Nothing on this page is simulated.</p>
+    </section>
+  </aside>
+</main>
+<script type="module" src="assets/js/bridge.js"></script>
+</body>
+</html>

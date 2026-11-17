@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>How it works · Antarctic sea-ice navigation (SIH 26059)</title>
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2312304d'/%3E%3Cpath d='M3 11 L8 4 L13 11 Z' fill='%23fff'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <div class="title">
+    <h1>Antarctic sea-ice navigation</h1>
+    <span>Decision support for the Bharati resupply run · SIH 26059 research demo</span>
+  </div>
+  <nav aria-label="Pages">
+    <a href="index.html">Bridge</a>
+    <a href="pipeline.html" aria-current="page">How it works</a>
+    <a href="evidence.html">Evidence</a>
+    <a href="https://github.com/jiteeshghodke456-del/antarticaprojectMoes/blob/main/docs/PROJECT_EXPLAINER.md">Explainer</a>
+  </nav>
+</header>
+
+<main class="page">
+  <h1>From a satellite pass to a decision on the bridge</h1>
+  <p class="lede">The system runs in eleven stages, in this order. Pick a stage to see what goes in, what comes out, why it was built that way, and which file in the source repository does it. The tag says whether that stage runs live on this site, was run beforehand, or is not in this demo yet.</p>
+
+  <div class="flow" id="flow" role="group" aria-label="Pipeline stages"></div>
+
+  <section class="block detail" id="detail" aria-live="polite"></section>
+
+  <section class="block">
+    <h2>The one idea to remember</h2>
+    <div class="prose">
+      <p>Ice charts tell a captain what the ice looked like when the satellite passed. A ship takes four to ten days to cross the pack. This project asks a different question: what will the ice be like at each point when the ship actually gets there? It answers that with a corrected forecast, plans the route against it, and then refuses to call the route safe for anything it has no evidence on.</p>
+      <p>That last part matters as much as the forecast. Six of the nine decision gates show UNKNOWN because the data that would settle them (bathymetry, weather, traffic, the ship's certificate) is not loaded. The system says so out loud instead of showing nine green lights.</p>
+    </div>
+  </section>
+</main>
+
+<script>
+const REPO = "https://github.com/jiteeshghodke456-del/sih26059-antarctic-navigation/blob/main/";
+const STAGES = [
+  { t: "Satellite truth", s: "NOAA/NSIDC passive-microwave ice concentration", tag: "pre",
+    what: "Downloads the daily sea-ice concentration record measured by satellite microwave radiometers. This is the ground truth the model learns to match and is scored against.",
+    input: "NOAA/NSIDC Sea Ice Concentration CDR, G02202 version 6. 25 km polar stereographic grid, 332 × 316 cells. No login needed.",
+    output: "Daily NetCDF files for 2018–2020 (1,096 files, zero failed), each with a concentration, a quality flag and a per-pixel standard deviation.",
+    why: "Passive microwave sees through cloud and polar night, which optical satellites cannot. The CDR is a long, consistent climate record, so a model trained on it is trained on one instrument family, not a patchwork.",
+    files: ["isih/download_nsidc.py"],
+    here: "Not downloaded by this site. Its results appear on the Evidence page." },
+  { t: "Daily forecast harvest", s: "Copernicus Marine GLO12, every morning", tag: "live",
+    what: "A GitHub Action wakes up once a day, pulls that morning's 9–10 day sea-ice forecast for the corridor (0–80°E, 55–78°S), packs it to int16 and commits it.",
+    input: "Copernicus Marine product GLOBAL_ANALYSISFORECAST_PHY_001_024, dataset cmems_mod_glo_phy_anfc_0.083deg_P1D-m. Variables: concentration, thickness, ice velocity east and north.",
+    output: "data/cmems_forecast_archive/cmems_siconc_YYYY-MM-DD.nc, one per forecast cycle. 79 cycles so far, from 31 Aug 2026.",
+    why: "A forecast as it was issued on a day cannot be downloaded later; the server only keeps the latest one. Without this archive there is no honest way to train or test a forecast-correcting model. It runs on GitHub so it does not depend on anyone's laptop being switched on.",
+    files: [".github/workflows/cmems-harvest.yml", "scripts/harvest_cmems.sh", "scripts/compress_netcdf.py"],
+    here: "Live. The Bridge chart reads these exact files, averaged to 0.25° cells by tools/build_data.py in this repo." },
+  { t: "Quality control", s: "Distrust the zeros the satellite cannot see", tag: "pre",
+    what: "Reads the quality flag that ships with every satellite file and marks cells where the land-spillover filter fired, or where there was no input, as unknown instead of 0% ice. A second check flags exact zeros sitting next to heavy ice, which is physically implausible.",
+    input: "Satellite concentration plus its QA flag bits (land spillover = 4, no input = 8).",
+    output: "A concentration field with untrustworthy cells set to NaN, plus a mask of what was removed.",
+    why: "Near the coast, a 25 km sensor footprint overlaps land, and the product writes 0.0%, a valid number, when it suppresses those pixels. An unguarded router reads that as open water at the station approach. Unknown is safer than a confident zero, because the router then inherits the ice around it.",
+    files: ["isih/ice_quality.py", "isih/audit_ice_quality.py"],
+    here: "Run beforehand on the 2018–2020 record. The finding is on the Evidence page." },
+  { t: "Regrid and build features", s: "Put both fields on one grid, add history", tag: "pre",
+    what: "Area-averages the 9 km physics-model field onto the 25 km satellite grid, then stacks 12 input channels for each day: the background, the last seven days of observed ice, the most recent model error (the innovation), the season and a land mask.",
+    input: "GLORYS12 reanalysis concentration and the QC'd satellite record.",
+    output: "Yearly .npz files of aligned background, truth and valid-mask arrays, plus a manifest of where each came from.",
+    why: "The truth grid is never resampled, because resampling the field you score against creates fake ice-edge errors. Area-averaging keeps ice area; bilinear sampling would throw most source cells away. The innovation channel tells the network how wrong the model was most recently at this exact spot.",
+    files: ["isih/grid.py", "isih/features.py", "isih/build_dataset.py"],
+    here: "Run beforehand on Kaggle." },
+  { t: "Bias-correction model", s: "Residual U-Net", tag: "off",
+    what: "A small convolutional network (1.93 million parameters) predicts the correction to add to the physics model's ice field, not the field itself. Corrected ice = background + predicted correction, clipped to 0–1.",
+    input: "The 12-channel stack for a given start day and lead time.",
+    output: "A corrected concentration map for 1, 3, 5 or 7 days ahead.",
+    why: "Predicting the residual means an untrained or unsure model falls back to the physics forecast instead of to nonsense. A U-Net keeps fine spatial detail through skip connections, which matters at the ice edge. It is cheap enough to train on a free Kaggle T4 GPU. Its score is an upper bound for now, because the training background was a reanalysis.",
+    files: ["models/sic_correction/unet.py", "isih/kaggle/isih_train.ipynb", "isih/mlflow_backfill.py", "docs/ML_ARCHITECTURE.md"],
+    here: "Not on this site: the trained weights live on Kaggle, not in the repo. The Bridge uses the raw CMEMS forecast and says so." },
+  { t: "Vessel mesh", s: "meshiphi quadtree + vessel performance", tag: "pre",
+    what: "Splits the corridor into boxes, finer where the ice changes, and applies a vessel performance model so each box gets a speed and a fuel cost for this particular ship, or is closed to it.",
+    input: "Concentration, literature values for thickness and density, and the vessel's beam, service speed and working ice limit.",
+    output: "A JSON mesh of cellboxes with speed, fuel and an inaccessible flag.",
+    why: "A mesh is far smaller than a raw grid, so routing is fast, and it is the input format PolarRoute expects. The ship's verified figures (16.4 kn, 22.4 m beam) are used; the force limit is borrowed from another ship and is labelled uncalibrated.",
+    files: ["isih/ice_meshes.py", "isih/make_route_figure.py"],
+    here: "Run beforehand for December 2019. Shown on the Evidence page." },
+  { t: "Route search", s: "Dijkstra on the mesh, then on time", tag: "live",
+    what: "PolarRoute runs a shortest-path search over the mesh. The project's own router adds time: the cost of entering a cell uses the forecast ice for the hour the ship will be there, not the ice on the day it leaves.",
+    input: "A start, a destination, a working ice limit and either the mesh or the day-by-day forecast.",
+    output: "A track with arrival times, distance, fuel index, worst ice met and any stretch over the limit.",
+    why: "PolarRoute is a peer-reviewed, open-source planner from the British Antarctic Survey, used for RRS Sir David Attenborough. It has no time dimension, so it plans on one snapshot of ice. The time-aware search closes that gap, and comparing the two is the core result.",
+    files: ["isih/sim/router.py", "isih/alternatives.py", "isih/route_regret.py", "isih/destination_window.py"],
+    here: "Live. The Bridge runs the time-aware router in your browser, ported from isih/sim/router.py. In the source repo that router runs on a synthetic world; here it runs on the real CMEMS forecast archive, and is compared with a plan made on departure-day ice." },
+  { t: "Icebergs", s: "USNIC positions, WDE17 drift physics", tag: "live",
+    what: "Loads the US National Ice Center list of named Antarctic icebergs and measures how close each comes to the planned track. The drift model (Wagner, Dell and Eisenman, 2017) is implemented and tested, but not wired to a current field yet.",
+    input: "USNIC Antarctic iceberg CSV (weekly, free, no login).",
+    output: "Berg positions, sizes and distance to the track.",
+    why: "USNIC only tracks giant bergs (about 10 nm and up). For those, the drift equation reduces to moving with the surface current, so forecast quality depends on the current field, not on drag coefficients. Small bergs and growlers, the ones that hole hulls, are in no satellite product at all; the system says so.",
+    files: ["models/iceberg/catalogue.py", "models/iceberg/drift.py", "models/iceberg/test_drift.py"],
+    here: "Positions live from the 27 Aug 2026 list. Drift is not forecast here." },
+  { t: "Safety layer", s: "POLARIS, nine gates, protected areas", tag: "live",
+    what: "Scores the track with the IMO POLARIS risk index, runs nine decision gates (capability, chart, ice, weather, traffic, logistics, communications, contingency, execution) and turns them into one route health state.",
+    input: "The track and the ice met along it, the declared ice stage, and whatever evidence exists for each gate.",
+    output: "A POLARIS band along the track, a state for each gate with its reason, and route health with the gate that set it.",
+    why: "Health is the worst gate, never a weighted score, so the reason travels with the verdict. A gate with no evidence shows UNKNOWN and caps health at DEGRADED: missing data is a reason for less confidence, never silence. POLARIS is shown as a band because this ship's ice class has no row in the IMO table.",
+    files: ["isih/polaris.py", "isih/gates.py", "isih/decision.py", "isih/protected_areas.py"],
+    here: "Live. Ported line for line to JavaScript (assets/js/model.js)." },
+  { t: "Bridge display", s: "What the officer of the watch sees", tag: "live",
+    what: "Puts the chart, the plan, the gates and the provenance of every number on one screen, built to load with no internet, map tiles or web fonts.",
+    input: "Everything above.",
+    output: "A chart and a decision rail.",
+    why: "A ship in the Southern Ocean has thin, expensive satellite bandwidth. Everything has to work from files already on board. Ice is drawn in the WMO ice-chart colour code that ice navigators already read.",
+    files: ["isih/demo/app.py", "isih/demo/static/bridge.html", "isih/demo/static/bridge.js"],
+    here: "This site is a static rebuild for GitHub Pages, using real data only. Note that the source repo's own default console (bridge.html at /) runs on a synthetic Southern Ocean built by isih/sim and badges it as such; its real-data December 2019 replay is at /legacy." },
+  { t: "Approval and monitoring", s: "Route versions, sign-off, re-plan", tag: "off",
+    what: "A state machine for the passage: define the mission, plan, review, assess, approve, navigate, monitor, and re-plan when a gate changes. Each approval is recorded with who was on watch.",
+    input: "Route health over time and the officer's decisions.",
+    output: "Versioned, approved routes and a decision log.",
+    why: "The order is the requirement: a route cannot be approved before it is reviewed. Whether the mission needs the station itself or only the approach decides the logistics gate, and so the whole verdict.",
+    files: ["isih/workflow.py", "isih/demo/workflow_service.py", "isih/demo/decision_service.py"],
+    here: "Not on this static site; it needs the Python backend." },
+];
+const TAG = { live: ["live", "Live here"], pre: ["pre", "Run beforehand"], off: ["off", "Not in this demo"] };
+const flow = document.getElementById("flow"), detail = document.getElementById("detail");
+flow.innerHTML = STAGES.map((s, i) => `<button data-i="${i}" aria-pressed="${i === 1}"><span class="tag ${TAG[s.tag][0]}">${TAG[s.tag][1]}</span><b>${s.t}</b><span>${s.s}</span></button>`).join("");
+function show(i) {
+  const s = STAGES[i];
+  flow.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.i === i)));
+  detail.innerHTML = `<h2>${i + 1}. ${s.t}</h2><p class="prose">${s.what}</p><dl>
+    <dt>Goes in</dt><dd>${s.input}</dd>
+    <dt>Comes out</dt><dd>${s.output}</dd>
+    <dt>Why this way</dt><dd>${s.why}</dd>
+    <dt>Code</dt><dd>${s.files.map((f) => `<a href="${REPO}${f}"><code>${f}</code></a>`).join(" ")}</dd>
+    <dt>On this site</dt><dd>${s.here}</dd></dl>`;
+}
+flow.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) show(+b.dataset.i); });
+show(1);
+</script>
+</body>
+</html>

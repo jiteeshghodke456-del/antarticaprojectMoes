@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Evidence · Antarctic sea-ice navigation (SIH 26059)</title>
+<link rel="stylesheet" href="assets/css/app.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2312304d'/%3E%3Cpath d='M3 11 L8 4 L13 11 Z' fill='%23fff'/%3E%3C/svg%3E">
+</head>
+<body>
+<header class="top">
+  <div class="title">
+    <h1>Antarctic sea-ice navigation</h1>
+    <span>Decision support for the Bharati resupply run · SIH 26059 research demo</span>
+  </div>
+  <nav aria-label="Pages">
+    <a href="index.html">Bridge</a>
+    <a href="pipeline.html">How it works</a>
+    <a href="evidence.html" aria-current="page">Evidence</a>
+    <a href="https://github.com/jiteeshghodke456-del/antarticaprojectMoes/blob/main/docs/PROJECT_EXPLAINER.md">Explainer</a>
+  </nav>
+</header>
+
+<main class="page">
+  <h1>What the data showed, and what it does not prove</h1>
+  <p class="lede">Every number on this page is read from a file in the source repository when the page loads. Where a result has a known weakness, the weakness is printed next to it.</p>
+
+  <section class="block">
+    <h2>The forecast drifts away from reality, and it drifts in days</h2>
+    <div class="two">
+      <div>
+        <svg class="chart" id="skillChart" viewBox="0 0 560 300" role="img" aria-label="Forecast error by lead time"></svg>
+        <p class="figcap" id="skillCap"></p>
+      </div>
+      <div class="prose">
+        <p>Since 31 August 2026 a GitHub Action has saved each day's Copernicus Marine forecast for the corridor. A forecast issued on a given day can be checked against the analysis issued for the day it was forecasting.</p>
+        <p>The edge error (the area where the forecast and the later analysis disagree about whether there is more than 15% ice) grows by roughly the same amount every day ahead. By day 7 it averages about 140,000 km², close to the area of Bangladesh. That growth is the reason the project corrects the forecast with a learned model instead of using it raw.</p>
+        <p class="small muted">Caution: this compares the forecast with the same system's own later analysis, not with satellite observation. It shows how fast the forecast changes its mind. It is not an accuracy score.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>The bias-correction model, and the honest reading of its score</h2>
+    <div class="two">
+      <div>
+        <table class="data">
+          <thead><tr><th>Lead</th><th class="num">U-Net</th><th class="num">Persistence</th><th class="num">Raw GLORYS12</th><th class="num">Gain vs persistence</th></tr></thead>
+          <tbody>
+            <tr><td>1 day</td><td class="num"><b>0.0465</b></td><td class="num">0.0570</td><td class="num">0.1630</td><td class="num">+18.5%</td></tr>
+            <tr><td>3 days</td><td class="num"><b>0.0720</b></td><td class="num">0.0958</td><td class="num">0.1630</td><td class="num">+24.9%</td></tr>
+            <tr><td>5 days</td><td class="num"><b>0.0938</b></td><td class="num">0.1204</td><td class="num">0.1637</td><td class="num">+22.1%</td></tr>
+            <tr><td>7 days</td><td class="num"><b>0.0968</b></td><td class="num">0.1395</td><td class="num">0.1637</td><td class="num">+30.6%</td></tr>
+          </tbody>
+        </table>
+        <p class="figcap">RMSE of sea-ice concentration (0 to 1) on the held-out test slice, scored once. Source: docs/ISIH_RESULTS.md, trained 31 Aug 2026 on a Kaggle T4.</p>
+      </div>
+      <div class="prose">
+        <p>The model takes a physics model's ice field and learns the correction that moves it toward what the satellite actually measured: corrected = background + learned correction. It beats persistence (assume tomorrow looks like today), which is the baseline that is hard to beat over a few days.</p>
+        <p>The weak point is stated in the repo itself. The background used in training, GLORYS12, is a reanalysis, so it has already seen observations near the target date. Its flat error across lead times is the fingerprint of that. So these scores are an upper bound on forecast skill, not a measurement of it. The clean test is to retrain on the real forecast archive shown above, which is why that archive is being collected every day.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>A zero that was really ice</h2>
+    <div class="pair" id="qaNums"></div>
+    <div class="prose">
+      <p>The NOAA/NSIDC satellite record writes 0.0% at coastal pixels where its land-spillover filter fired. Zero is a valid value, so any naive reader takes it as open water. On 1 December 2019 the cell beside Bharati read 0.0% while its quality flag said not to trust it. With flagged cells removed, the same spot reads 30.7%. Three days later it read 88%: the ice never left, the retrieval did.</p>
+      <p class="small muted" id="qaAudit"></p>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>December 2019: the station was shut most days, the approach never was</h2>
+    <svg class="chart" id="windowChart" viewBox="0 0 1080 260" role="img" aria-label="Daily ice concentration at Bharati and its approach, December 2019"></svg>
+    <p class="figcap" id="windowCap"></p>
+  </section>
+
+  <section class="block">
+    <h2>The PolarRoute run this all started from</h2>
+    <div class="two">
+      <div class="figure"><canvas id="meshMap" style="height:540px"></canvas></div>
+      <div class="prose">
+        <p>The British Antarctic Survey's open-source planner, PolarRoute, splits the sea into a quadtree mesh: large boxes where the ice is uniform, smaller ones where it changes. A vessel model then gives each box a speed for this ship, and a shortest-path search (Dijkstra) finds the quickest way through.</p>
+        <p id="routeStats"></p>
+        <p class="small muted">Boxes are coloured by mean concentration with the WMO code; hatched boxes are closed to the ship. The mesh plans on box means, while the "worst ice on the route" figure comes from 25 km pixels, which is why one can exceed the other.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Three corridors, and why one of them does not exist</h2>
+    <table class="data" id="altTable"></table>
+    <ul class="prose small" id="altFindings" style="margin-top:12px"></ul>
+  </section>
+
+  <section class="block">
+    <h2>Sailing on stale ice, and changing the ship</h2>
+    <div class="two">
+      <div>
+        <table class="data" id="regretTable"></table>
+        <p class="figcap" id="regretCap"></p>
+      </div>
+      <div class="prose" id="vesselText"></div>
+    </div>
+  </section>
+</main>
+<script type="module" src="assets/js/evidence.js"></script>
+</body>
+</html>
