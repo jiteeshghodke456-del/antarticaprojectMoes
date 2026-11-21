@@ -242,6 +242,18 @@ if _pr.exists():
                              "bg_pixel_bias": float(cells[2]), "raw_glorys12": float(cells[3]),
                              "gain_vs_persistence": cells[4]})
     prototype_results = {"provenance": "docs/PROTOTYPE_RESULTS.md (headline table)", "rows": rows} if rows else None
+# Dataset licences and citations, parsed from the source repo's ATTRIBUTION.md
+# so the pipeline page never retypes licence wording.
+attribution = None
+_at = SRC / "ATTRIBUTION.md"
+if _at.exists():
+    sec = _at.read_text().split("## Datasets", 1)[-1].split("\n## ", 1)[0]
+    rows = [[c.strip() for c in l.strip().strip("|").split("|")] for l in sec.splitlines() if l.startswith("|")]
+    rows = [r for r in rows[2:] if len(r) == 4]          # drop the header and the --- row
+    attribution = {"provenance": "ATTRIBUTION.md (Datasets table)",
+                   "rows": [dict(zip(["dataset", "used_for", "licence", "citation"], r)) for r in rows]}
+else:
+    missing.append({"layer": "attribution", "reason": "ATTRIBUTION.md not found in the source repo"})
 if prototype_results is None:
     missing.append({"layer": "prototype_results", "reason": "docs/PROTOTYPE_RESULTS.md missing or its table changed shape"})
 routes = J("routes.json")
@@ -279,6 +291,7 @@ static = {
     "berg_resolution": with_src(J_opt("berg_resolution.json"), "dakshin/figures/berg_resolution.json"),
     "real_route": with_src(J_opt("real_route.json"), "dakshin/figures/real_route.json (scripts/real_route_run.py)"),
     "prototype_results": prototype_results,
+    "attribution": attribution,
     "gate_rules": gate_rules,
     "missing": missing,
 }
@@ -379,6 +392,11 @@ if bathy_f.exists():
     battrs = dict(ds.attrs); ds.close()
     if blat[0] > blat[-1]:
         blat = blat[::-1]; el = el[::-1]; el_mean = el_mean[::-1]
+    # Crop to the Bridge chart box (assets/js/bridge.js BOX: 78-54 S, 0-80 E) plus a
+    # half-degree margin; the source grid now runs north to 30 S with GEBCO.
+    ky = (blat >= -78.5) & (blat <= -53.5); kx = (blon >= -0.5) & (blon <= 80.5)
+    blat, blon = blat[ky], blon[kx]
+    el, el_mean = el[np.ix_(ky, kx)], el_mean[np.ix_(ky, kx)]
     B = 2
     ny, nx = el.shape[0] // B, el.shape[1] // B
     shallow = el[: ny * B, : nx * B].reshape(ny, B, nx, B).max(axis=(1, 3))      # shallowest point in the block
@@ -410,11 +428,12 @@ if bathy_f.exists():
     min_depth = gate_rules["vessel"]["min_depth_m"]
     layers["depth"] = {
         "file": "depth.bin", "grid": g_d,
-        "encoding": "int16 little-endian [ny][nx]: elevation in metres of the SHALLOWEST point in each ~0.11 deg block "
+        "encoding": f"int16 little-endian [ny][nx]: elevation in metres of the SHALLOWEST point in each {g_d['dlat']:.2f} deg block "
                     "(negative = below sea level); 32767 = mostly land or ice surface",
         "reduction": "2x2 block max of 'elevation' (itself the shallowest value per 0.05 deg cell)",
         "min_depth_m": min_depth, "min_depth_provenance": "dakshin/ice_meshes.py GOLOVNIN['min_depth']",
         "contours": {"levels_m": LEVELS, "basis": "2x2 block mean of elevation_mean", "lines": lines},
+        "crop": "78.5-53.5 S, 0-80.5 E (the Bridge chart box plus margin)",
         "source": battrs.get("title", ""), "citation": battrs.get("references", ""),
         "licence": battrs.get("license", ""), "caveat": battrs.get("caveat", ""),
         "provenance": "data/bathymetry/ibcso_v2_corridor_0p05.nc",
@@ -423,6 +442,15 @@ else:
     missing.append({"layer": "depth", "reason": "data/bathymetry/ibcso_v2_corridor_0p05.nc not in the source repo"})
 
 layers["bergs"] = berg_layer
+
+# The F1 figure is shown as published; copied, not redrawn.
+import shutil
+png = fig / "resolution_study.png"
+if png.exists():
+    (OUT.parent / "assets" / "img").mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(png, OUT.parent / "assets" / "img" / "resolution_study.png")
+else:
+    missing.append({"layer": "resolution_study.png", "reason": "dakshin/figures/resolution_study.png not found"})
 (OUT / "layers.json").write_text(json.dumps(layers, separators=(",", ":")))
 
 (OUT / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))
