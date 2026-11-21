@@ -601,6 +601,14 @@ function renderFinding() {
     return;
   }
   const closed = R.approach_closed_at_ice_limit, g = R.weather_gate, d = (x) => fmtDate(x, { day: "numeric", month: "long", year: "numeric" });
+  // The finding belongs to ONE forecast. Viewing another cycle keeps a quiet
+  // reference instead of shouting a red banner about a different day.
+  if (S.cycle && S.cycle.cycle !== R.cycle) {
+    el.className = "ribbon neutral";
+    el.innerHTML = `<div class="verdict">Viewing the ${d(S.cycle.cycle)} forecast</div>
+      <p>The latest route finding ("${closed ? "approach closed" : "approach open"}") is for the ${d(R.cycle)} forecast — step the Issued date forward to see it with its chart.</p>`;
+    return;
+  }
   el.className = "ribbon" + (closed || g.state === "FAIL" ? "" : " neutral");
   const gs = g.state === "FAIL" ? "INVALID" : g.state === "MARGINAL" ? "DEGRADED" : "VALID";
   el.innerHTML = `
@@ -676,7 +684,7 @@ async function refresh({ recompute = true } = {}) {
   if (S.lead >= f.leads) S.lead = f.leads - 1;
   recompute = recomputePending; recomputePending = false;
   if (recompute) S.result = compute(f);
-  renderTimeline(f); renderStart(); renderLayerControls(); renderLegend();
+  renderTimeline(f); renderStart(); renderLayerControls(); renderLegend(); renderFinding();
   drawChart(f);
   if (recompute) { renderCompare(); renderGates(); renderPolaris(); renderBergs(); renderSpark(); }
  } catch (e) { showError(e); }
