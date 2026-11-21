@@ -3,21 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>How it works · Antarctic sea-ice navigation (SIH 26059)</title>
+<title>How it works · Dakshin</title>
 <link rel="stylesheet" href="assets/css/app.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2312304d'/%3E%3Cpath d='M3 11 L8 4 L13 11 Z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2312304d'/%3E%3Cpath d='M8 14 L4 3 L8 5.5 L12 3 Z' fill='%23fff'/%3E%3C/svg%3E">
 </head>
 <body>
 <header class="top">
-  <div class="title">
-    <h1>Antarctic sea-ice navigation</h1>
-    <span>Decision support for the Bharati resupply run · SIH 26059 research demo</span>
-  </div>
+  <a class="brand" href="index.html">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="12" fill="none" stroke="#b9c8d4" stroke-width="1.2"/><path d="M13 22.5 L8.2 7.5 L13 10.6 L17.8 7.5 Z" fill="#f3f6f8"/></svg>
+    <span><span class="brand-name">Dakshin</span><span class="brand-sub">Advisory ice-navigation aid for the Antarctic resupply run</span></span>
+  </a>
   <nav aria-label="Pages">
     <a href="index.html">Bridge</a>
     <a href="pipeline.html" aria-current="page">How it works</a>
     <a href="evidence.html">Evidence</a>
-    <a href="https://github.com/jiteeshghodke456-del/antarticaprojectMoes/blob/main/docs/PROJECT_EXPLAINER.md">Explainer</a>
+    <a href="https://github.com/jiteeshghodke456-del/antarticaprojectMoes/blob/main/docs/PROJECT_EXPLAINER.md">Study guide</a>
   </nav>
 </header>
 
@@ -33,12 +33,19 @@
     <h2>The one idea to remember</h2>
     <div class="prose">
       <p>Ice charts tell a captain what the ice looked like when the satellite passed. A ship takes four to ten days to cross the pack. This project asks a different question: what will the ice be like at each point when the ship actually gets there? It answers that with a corrected forecast, plans the route against it, and then refuses to call the route safe for anything it has no evidence on.</p>
-      <p>That last part matters as much as the forecast. Six of the nine decision gates show UNKNOWN because the data that would settle them (bathymetry, weather, traffic, the ship's certificate) is not loaded. The system says so out loud instead of showing nine green lights.</p>
+      <p>That last part matters as much as the forecast. The capability, traffic, communications and execution gates show UNKNOWN because the data that would settle them (the ship's certificate, a live AIS feed, a link budget, bridge sensors) is not held. The chart gate can never pass, because the seabed data is a scientific compilation, not an official chart. Weather is assessed from real waves and wind but never claims to have checked visibility. The system says all of this out loud instead of showing nine green lights.</p>
     </div>
+  </section>
+
+  <section class="block">
+    <h2>Where the data comes from, and on what terms</h2>
+    <p class="prose small">Each row is a dataset the Bridge or the Evidence page reads. The licence and citation columns are copied from the source repository's ATTRIBUTION.md when the site is built.</p>
+    <div class="tablewrap"><table class="data sources" id="sources"></table></div>
+    <p class="figcap" id="sourcesCap"></p>
   </section>
 </main>
 
-<script>
+<script type="module">
 const REPO = "https://github.com/jiteeshghodke456-del/sih26059-antarctic-navigation/blob/main/";
 const STAGES = [
   { t: "Satellite truth", s: "NOAA/NSIDC passive-microwave ice concentration", tag: "pre",
@@ -51,7 +58,7 @@ const STAGES = [
   { t: "Daily forecast harvest", s: "Copernicus Marine GLO12, every morning", tag: "live",
     what: "A GitHub Action wakes up once a day, pulls that morning's 9–10 day sea-ice forecast for the corridor (0–80°E, 55–78°S), packs it to int16 and commits it.",
     input: "Copernicus Marine product GLOBAL_ANALYSISFORECAST_PHY_001_024, dataset cmems_mod_glo_phy_anfc_0.083deg_P1D-m. Variables: concentration, thickness, ice velocity east and north.",
-    output: "data/cmems_forecast_archive/cmems_siconc_YYYY-MM-DD.nc, one per forecast cycle. 79 cycles so far, from 31 Aug 2026.",
+    output: "data/cmems_forecast_archive/cmems_siconc_YYYY-MM-DD.nc, one per forecast cycle, plus cmems_cur_ (surface currents) and cmems_wav_ (daily max wave height) files for the same cycle. {CYCLES}",
     why: "A forecast as it was issued on a day cannot be downloaded later; the server only keeps the latest one. Without this archive there is no honest way to train or test a forecast-correcting model. It runs on GitHub so it does not depend on anyone's laptop being switched on.",
     files: [".github/workflows/cmems-harvest.yml", "scripts/harvest_cmems.sh", "scripts/compress_netcdf.py"],
     here: "Live. The Bridge chart reads these exact files, averaged to 0.25° cells by tools/build_data.py in this repo." },
@@ -91,15 +98,15 @@ const STAGES = [
     files: ["dakshin/sim/router.py", "dakshin/alternatives.py", "dakshin/route_regret.py", "dakshin/destination_window.py"],
     here: "Live. The Bridge runs the time-aware router in your browser, ported from dakshin/sim/router.py. In the source repo that router runs on a synthetic world; here it runs on the real CMEMS forecast archive, and is compared with a plan made on departure-day ice." },
   { t: "Icebergs", s: "USNIC positions, WDE17 drift physics", tag: "live",
-    what: "Loads the US National Ice Center list of named Antarctic icebergs and measures how close each comes to the planned track. The drift model (Wagner, Dell and Eisenman, 2017) is implemented and tested, but not wired to a current field yet.",
-    input: "USNIC Antarctic iceberg CSV (weekly, free, no login).",
-    output: "Berg positions, sizes and distance to the track.",
+    what: "Loads the US National Ice Center list of named Antarctic icebergs and measures how close each comes to the planned track. The drift model (Wagner, Dell and Eisenman, 2017) was run against the weekly USNIC fixes with real CMEMS surface currents, and lost to persistence: most corridor giants are grounded.",
+    input: "USNIC Antarctic iceberg CSV (weekly, free, no login) and CMEMS surface-current analyses.",
+    output: "Berg positions, sizes, distance to the track, and a position-uncertainty radius that grows at the hindcast's measured error rate.",
     why: "USNIC only tracks giant bergs (about 10 nm and up). For those, the drift equation reduces to moving with the surface current, so forecast quality depends on the current field, not on drag coefficients. Small bergs and growlers, the ones that hole hulls, are in no satellite product at all; the system says so.",
-    files: ["models/iceberg/catalogue.py", "models/iceberg/drift.py", "models/iceberg/test_drift.py"],
-    here: "Positions live from the 27 Aug 2026 list. Drift is not forecast here." },
+    files: ["models/iceberg/catalogue.py", "models/iceberg/drift.py", "scripts/berg_hindcast.py", "scripts/berg_resolution.py"],
+    here: "{BERGS}" },
   { t: "Safety layer", s: "POLARIS, nine gates, protected areas", tag: "live",
     what: "Scores the track with the IMO POLARIS risk index, runs nine decision gates (capability, chart, ice, weather, traffic, logistics, communications, contingency, execution) and turns them into one route health state.",
-    input: "The track and the ice met along it, the declared ice stage, and whatever evidence exists for each gate.",
+    input: "The track and the ice met along it, the declared ice stage, CMEMS waves, ECMWF wind and IBCSO depth along the track, and whatever evidence exists for the other gates.",
     output: "A POLARIS band along the track, a state for each gate with its reason, and route health with the gate that set it.",
     why: "Health is the worst gate, never a weighted score, so the reason travels with the verdict. A gate with no evidence shows UNKNOWN and caps health at DEGRADED: missing data is a reason for less confidence, never silence. POLARIS is shown as a band because this ship's ice class has no row in the IMO table.",
     files: ["dakshin/polaris.py", "dakshin/gates.py", "dakshin/decision.py", "dakshin/protected_areas.py"],
@@ -120,8 +127,14 @@ const STAGES = [
     here: "Not on this static site; it needs the Python backend." },
 ];
 const TAG = { live: ["live", "Live here"], pre: ["pre", "Run beforehand"], off: ["off", "Not in this demo"] };
+const [meta, stat, lay] = await Promise.all(["data/meta.json", "data/static.json", "data/layers.json"].map((u) => fetch(u).then((r) => r.json())));
+const fmt = (iso) => new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
+const fill = (t) => t
+  .replace("{CYCLES}", `${meta.cycles.length} cycles on this site, ${fmt(meta.cycles[0].cycle)} to ${fmt(meta.cycles.at(-1).cycle)}.`)
+  .replace("{BERGS}", lay.bergs ? `Live: ${lay.bergs.items.length} bergs from the ${fmt(lay.bergs.items[0].observed)} list, with uncertainty rings at ${lay.bergs.uncertainty_km_per_day} km a day. The hindcast is on the Evidence page.` : `Not built: ${lay.missing.find((m) => m.layer === "bergs")?.reason}.`);
+for (const st of STAGES) for (const k of ["output", "here"]) st[k] = fill(st[k]);
 const flow = document.getElementById("flow"), detail = document.getElementById("detail");
-flow.innerHTML = STAGES.map((s, i) => `<button data-i="${i}" aria-pressed="${i === 1}"><span class="tag ${TAG[s.tag][0]}">${TAG[s.tag][1]}</span><b>${s.t}</b><span>${s.s}</span></button>`).join("");
+flow.innerHTML = STAGES.map((s, i) => `<button data-i="${i}" aria-pressed="${i === 1}"><span class="tag ${TAG[s.tag][0]}">${TAG[s.tag][1]}</span><span class="n">${i + 1}</span><b>${s.t}</b><span>${s.s}</span></button>`).join("");
 function show(i) {
   const s = STAGES[i];
   flow.querySelectorAll("button").forEach((b) => b.setAttribute("aria-pressed", String(+b.dataset.i === i)));
@@ -134,6 +147,32 @@ function show(i) {
 }
 flow.addEventListener("click", (e) => { const b = e.target.closest("button"); if (b) show(+b.dataset.i); });
 show(1);
+
+// Data sources: what each feed is, how often it arrives, and its terms (from ATTRIBUTION.md).
+const CADENCE = [
+  ["GLOBAL_ANALYSISFORECAST_PHY", "Daily: the GitHub Action saves each 10-day forecast and its surface currents", "Bridge ice chart, drift, routing"],
+  ["GLOBAL_ANALYSISFORECAST_WAV", "Daily, in the same harvest run; 3-hourly fields reduced to the daily max", "Wave layer, weather gate"],
+  ["ECMWF open data", "Built to run daily (ECMWF keeps only the last few runs); not yet in the scheduled Action, so only harvested cycles exist", "Wind layer, weather gate"],
+  ["IBCSO v2", "One-off subset of the corridor", "Depth layer, chart gate"],
+  ["GEBCO", "One-off subset north of 50° S", "Not on the Bridge chart (it lies north of the box)"],
+  ["USNIC", "Weekly list; archive issues fetched by scripts/harvest_usnic.sh", "Iceberg layer, berg hindcast"],
+  ["G10016", "Daily satellite files for the 2026 season", "Evidence: forecast skill against the satellite"],
+  ["G02202", "2018 to 2020 archive", "Evidence: prototype training and December 2019 results"],
+  ["GLORYS12", "One-off, for the prototype", "Prototype training background (Evidence)"],
+  ["Natural Earth", "One-off", "Coastline"],
+  ["Antarctic Treaty", "One-off", "Protected areas layer"],
+];
+const tidy = (t) => t.replace(/\*\*/g, "").replace(/`/g, "");
+const A = stat.attribution;
+if (!A) document.getElementById("sources").outerHTML = `<p class="small muted">Not built: ${stat.missing.find((m) => m.layer === "attribution")?.reason}.</p>`;
+else {
+  let prev = "";   // ATTRIBUTION.md writes "same" for a licence repeated from the row above
+  const all = A.rows.map((r) => { const licence = r.licence === "same" ? prev : r.licence; prev = licence; return { ...r, licence }; });
+  const rows = all.map((r) => ({ r, c: CADENCE.find(([k]) => r.dataset.includes(k)) })).filter((x) => x.c);
+  document.getElementById("sources").innerHTML = `<thead><tr><th>Dataset</th><th>Arrives</th><th>Feeds</th><th>Licence</th><th>Citation or credit</th></tr></thead><tbody>${rows.map(({ r, c }) =>
+    `<tr><td>${tidy(r.dataset)}</td><td>${c[1]}</td><td>${c[2]}</td><td>${tidy(r.licence)}</td><td>${tidy(r.citation)}</td></tr>`).join("")}</tbody>`;
+  document.getElementById("sourcesCap").textContent = `Source: ${A.provenance} in the source repository. Rows not used by this site (for example the Open-Meteo fallback) are left out.`;
+}
 </script>
 </body>
 </html>

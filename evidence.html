@@ -3,27 +3,27 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Evidence · Antarctic sea-ice navigation (SIH 26059)</title>
+<title>Evidence · Dakshin</title>
 <link rel="stylesheet" href="assets/css/app.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2312304d'/%3E%3Cpath d='M3 11 L8 4 L13 11 Z' fill='%23fff'/%3E%3C/svg%3E">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2312304d'/%3E%3Cpath d='M8 14 L4 3 L8 5.5 L12 3 Z' fill='%23fff'/%3E%3C/svg%3E">
 </head>
 <body>
 <header class="top">
-  <div class="title">
-    <h1>Antarctic sea-ice navigation</h1>
-    <span>Decision support for the Bharati resupply run · SIH 26059 research demo</span>
-  </div>
+  <a class="brand" href="index.html">
+    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="12" fill="none" stroke="#b9c8d4" stroke-width="1.2"/><path d="M13 22.5 L8.2 7.5 L13 10.6 L17.8 7.5 Z" fill="#f3f6f8"/></svg>
+    <span><span class="brand-name">Dakshin</span><span class="brand-sub">Advisory ice-navigation aid for the Antarctic resupply run</span></span>
+  </a>
   <nav aria-label="Pages">
     <a href="index.html">Bridge</a>
     <a href="pipeline.html">How it works</a>
     <a href="evidence.html" aria-current="page">Evidence</a>
-    <a href="https://github.com/jiteeshghodke456-del/antarticaprojectMoes/blob/main/docs/PROJECT_EXPLAINER.md">Explainer</a>
+    <a href="https://github.com/jiteeshghodke456-del/antarticaprojectMoes/blob/main/docs/PROJECT_EXPLAINER.md">Study guide</a>
   </nav>
 </header>
 
 <main class="page">
   <h1>What the data showed, and what it does not prove</h1>
-  <p class="lede">Every number on this page is read from a file in the source repository when the page loads. Where a result has a known weakness, the weakness is printed next to it.</p>
+  <p class="lede">Every number on this page is read from a file built out of the source repository. Where a result has a known weakness, the weakness is printed next to it, and where a result went against the project, it is shown anyway.</p>
 
   <section class="block">
     <h2>The forecast drifts away from reality, and it drifts in days</h2>
@@ -34,9 +34,20 @@
       </div>
       <div class="prose">
         <p>Since 31 August 2026 a GitHub Action has saved each day's Copernicus Marine forecast for the corridor. A forecast issued on a given day can be checked against the analysis issued for the day it was forecasting.</p>
-        <p>The edge error (the area where the forecast and the later analysis disagree about whether there is more than 15% ice) grows by roughly the same amount every day ahead. By day 7 it averages about 140,000 km², close to the area of Bangladesh. That growth is the reason the project corrects the forecast with a learned model instead of using it raw.</p>
-        <p class="small muted">Caution: this compares the forecast with the same system's own later analysis, not with satellite observation. It shows how fast the forecast changes its mind. It is not an accuracy score.</p>
+        <p id="driftText"></p>
+        <p class="small muted">Caution: this compares the forecast with the same system's own later analysis, not with satellite observation. It shows how fast the forecast changes its mind. It is not an accuracy score. The next panel scores the same archive against the satellite.</p>
       </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <h2>Against satellite truth, the raw forecast beats persistence on concentration</h2>
+    <div class="two">
+      <div>
+        <div class="tablewrap"><table class="data" id="truthTable"></table></div>
+        <p class="figcap" id="truthCap"></p>
+      </div>
+      <div class="prose" id="truthText"></div>
     </div>
   </section>
 
@@ -44,21 +55,43 @@
     <h2>The bias-correction model, and the honest reading of its score</h2>
     <div class="two">
       <div>
-        <table class="data">
-          <thead><tr><th>Lead</th><th class="num">U-Net</th><th class="num">Persistence</th><th class="num">Raw GLORYS12</th><th class="num">Gain vs persistence</th></tr></thead>
-          <tbody>
-            <tr><td>1 day</td><td class="num"><b>0.0465</b></td><td class="num">0.0570</td><td class="num">0.1630</td><td class="num">+18.5%</td></tr>
-            <tr><td>3 days</td><td class="num"><b>0.0720</b></td><td class="num">0.0958</td><td class="num">0.1630</td><td class="num">+24.9%</td></tr>
-            <tr><td>5 days</td><td class="num"><b>0.0938</b></td><td class="num">0.1204</td><td class="num">0.1637</td><td class="num">+22.1%</td></tr>
-            <tr><td>7 days</td><td class="num"><b>0.0968</b></td><td class="num">0.1395</td><td class="num">0.1637</td><td class="num">+30.6%</td></tr>
-          </tbody>
-        </table>
-        <p class="figcap">RMSE of sea-ice concentration (0 to 1) on the held-out test slice, scored once. Source: docs/PROTOTYPE_RESULTS.md, trained 31 Aug 2026 on a Kaggle T4.</p>
+        <div class="tablewrap"><table class="data" id="unetTable"></table></div>
+        <p class="figcap" id="unetCap"></p>
       </div>
       <div class="prose">
         <p>The model takes a physics model's ice field and learns the correction that moves it toward what the satellite actually measured: corrected = background + learned correction. It beats persistence (assume tomorrow looks like today), which is the baseline that is hard to beat over a few days.</p>
-        <p>The weak point is stated in the repo itself. The background used in training, GLORYS12, is a reanalysis, so it has already seen observations near the target date. Its flat error across lead times is the fingerprint of that. So these scores are an upper bound on forecast skill, not a measurement of it. The clean test is to retrain on the real forecast archive shown above, which is why that archive is being collected every day.</p>
+        <p>The weak point is stated in the repo itself. The background used in training, GLORYS12, is a reanalysis, so it has already seen observations near the target date. Its flat error across lead times is the fingerprint of that. So these scores are an upper bound on forecast skill, not a measurement of it. The clean test is to retrain on the real forecast archive scored above, which is why that archive is collected every day.</p>
       </div>
+    </div>
+  </section>
+
+  <section class="block" id="resolution">
+    <h2>Resolution: does a 1/12° ocean model tell the captain more?</h2>
+    <p class="prose" id="resQuestion"></p>
+    <div class="two">
+      <div>
+        <div class="tablewrap"><table class="data" id="resTable"></table></div>
+        <p class="figcap" id="resCap"></p>
+      </div>
+      <div>
+        <img class="figimg" src="assets/img/resolution_study.png" width="1484" height="619" alt="Two line charts by lead time, 1 to 7 days. Left: RMSE of the CMEMS forecast at 1/12, 1/4 and 1 degree, all well below persistence. Right: ice-edge error, where the 1 degree forecast is clearly worse than 1/12 and 1/4, which are close together.">
+        <p class="figcap">F1 figure from the source repo (dakshin/figures/resolution_study.png).</p>
+      </div>
+    </div>
+    <div class="prose" id="resText"></div>
+    <h3>F3: do eddies change iceberg tracks?</h3>
+    <div class="two">
+      <div><div class="tablewrap"><table class="data" id="bergResTable"></table></div><p class="figcap" id="bergResCap"></p></div>
+      <div class="prose small" id="bergResText"></div>
+    </div>
+  </section>
+
+  <section class="block" id="bergs">
+    <h2>Iceberg drift: staying put beat the drift model</h2>
+    <div class="pair" id="bergNums"></div>
+    <div class="two">
+      <div class="prose" id="bergText"></div>
+      <div><div class="tablewrap"><table class="data" id="bergTable"></table></div><p class="figcap" id="bergCap"></p></div>
     </div>
   </section>
 
@@ -66,7 +99,7 @@
     <h2>A zero that was really ice</h2>
     <div class="pair" id="qaNums"></div>
     <div class="prose">
-      <p>The NOAA/NSIDC satellite record writes 0.0% at coastal pixels where its land-spillover filter fired. Zero is a valid value, so any naive reader takes it as open water. On 1 December 2019 the cell beside Bharati read 0.0% while its quality flag said not to trust it. With flagged cells removed, the same spot reads 30.7%. Three days later it read 88%: the ice never left, the retrieval did.</p>
+      <p id="qaText"></p>
       <p class="small muted" id="qaAudit"></p>
     </div>
   </section>
@@ -91,7 +124,7 @@
 
   <section class="block">
     <h2>Three corridors, and why one of them does not exist</h2>
-    <table class="data" id="altTable"></table>
+    <div class="tablewrap"><table class="data" id="altTable"></table></div>
     <ul class="prose small" id="altFindings" style="margin-top:12px"></ul>
   </section>
 
@@ -99,7 +132,7 @@
     <h2>Sailing on stale ice, and changing the ship</h2>
     <div class="two">
       <div>
-        <table class="data" id="regretTable"></table>
+        <div class="tablewrap"><table class="data" id="regretTable"></table></div>
         <p class="figcap" id="regretCap"></p>
       </div>
       <div class="prose" id="vesselText"></div>
