@@ -1,7 +1,7 @@
 """Build the static data files the GitHub Pages demo reads.
 
 Input : the Dakshin source repo (path as argv[1]; on GitHub still named
-         sih26059-antarctic-navigation)
+         dakshin source repo)
          - data/cmems_forecast_archive/cmems_siconc_<cycle>.nc  (CMEMS GLO12 forecast,
            one file per daily forecast cycle, 1/12 degree, 0-80E, 78-55S)
          - data/icebergs/usnic_antarctic_*.csv                   (US National Ice Center)

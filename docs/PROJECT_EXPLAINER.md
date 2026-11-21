@@ -2,7 +2,7 @@
 
 This guide is for Jiteesh. It assumes you know nothing about the project and takes you from there to the point where you can explain it to a professor and defend it when he pushes back.
 
-The project is the team's entry for Smart India Hackathon problem statement 26059, set by India's Ministry of Earth Sciences (MoES) and its polar institute NCPOR. The statement asks for an AI/ML decision-support platform that forecasts Antarctic sea-ice concentration, predicts iceberg trajectories, and finds safe, fuel-efficient routes for research vessels. The repo is `sih26059-antarctic-navigation`.
+Dakshin is an advisory decision-support platform for India's Antarctic resupply voyages, motivated by an operational need stated by the Ministry of Earth Sciences (MoES) and its polar institute NCPOR: forecast Antarctic sea-ice concentration, predict iceberg trajectories, and find safe, fuel-efficient routes for research vessels. The source repo is `dakshin`.
 
 Everything below comes from the repo: the docs, the code, and the data files. When a number appears, I say which file it came from. When the docs and the code disagree, I trust the code and say so. There is a list of those disagreements in section 11, and you should read it before the interview, because a professor who reads the repo will find them.
 
