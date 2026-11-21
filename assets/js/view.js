@@ -8,16 +8,17 @@
 // the projection moves the ice field, overlays, routes, bergs, labels and the
 // cursor readout together.
 //
-// Repainting the raster is the slow part, so during a gesture the last
-// painted bitmap is moved with a CSS transform (exact for a scale+translate)
-// and the vector overlay is redrawn every frame; the raster is repainted once
-// the gesture settles.
+// During a gesture nothing is redrawn: the one wrapper holding every canvas
+// (raster, fields, overlay) is moved with a CSS transform, so all layers move
+// in lockstep (lines scale slightly mid-gesture). When the gesture settles
+// the wrapper transform is cleared and every canvas is repainted at the new
+// view inside the same task, so no frame ever shows the layers apart.
 
 export const ZMAX = 8;
 
-export function createView({ proj, surface, base, onFrame, onSettle, onChange }) {
+export function createView({ proj, surface, stack, onSettle, onChange }) {
   const V = { z: 1, tx: 0, ty: 0 };
-  let fit = null, painted = null, w = 0, h = 0, raf = 0, settle = 0;
+  let fit = null, painted = null, w = 0, h = 0, settle = 0;
 
   const clamp = () => {
     V.z = Math.min(ZMAX, Math.max(1, V.z));
@@ -33,9 +34,8 @@ export function createView({ proj, surface, base, onFrame, onSettle, onChange })
     clamp(); apply();
     if (painted) {
       const k = V.z / painted.z;
-      base.style.transform = `translate(${V.tx - painted.tx * k}px, ${V.ty - painted.ty * k}px) scale(${k})`;
+      stack.style.transform = `translate(${V.tx - painted.tx * k}px, ${V.ty - painted.ty * k}px) scale(${k})`;
     }
-    cancelAnimationFrame(raf); raf = requestAnimationFrame(onFrame);
     clearTimeout(settle); settle = setTimeout(onSettle, 160);
     onChange?.(V.z);
   };
@@ -45,7 +45,7 @@ export function createView({ proj, surface, base, onFrame, onSettle, onChange })
     key: () => `${V.z.toFixed(4)},${V.tx.toFixed(1)},${V.ty.toFixed(1)}`,
     // Called by drawChart after Projection.fit: remember the fit, re-apply the view.
     setFit(width, height) { w = width; h = height; fit = { s: proj.s, cx: proj.cx, cy: proj.cy }; clamp(); apply(); },
-    markPainted() { painted = { ...V }; base.style.transform = ""; },
+    markPainted() { painted = { ...V }; stack.style.transform = ""; },
     zoomAt(px, py, factor) {
       const z1 = Math.min(ZMAX, Math.max(1, V.z * factor));
       const fx = (px - V.tx) / V.z, fy = (py - V.ty) / V.z;   // fitted coords under the cursor stay put
@@ -67,7 +67,8 @@ export function createView({ proj, surface, base, onFrame, onSettle, onChange })
 
   const ptrs = new Map(); let moved = 0, pinch = null;
   surface.addEventListener("pointerdown", (e) => {
-    surface.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, pt(e)); moved = 0;
+    try { surface.setPointerCapture(e.pointerId); } catch { /* synthetic or already-released pointer */ }
+    ptrs.set(e.pointerId, pt(e)); moved = 0;
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()]; pinch = { d: Math.hypot(a[0] - b[0], a[1] - b[1]), m: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] }; }
     surface.classList.add("grabbing");
   });

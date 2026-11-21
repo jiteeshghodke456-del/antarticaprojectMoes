@@ -1,25 +1,33 @@
 import { Router, VESSEL, STAGES, band, evaluateGates, haversineKm, GATE_ORDER } from "./model.js";
-import { Projection, setupCanvas, paintRaster, gridSampler, wmoColour, WMO, drawGraticule, drawLand, drawLine, drawMarker, drawBerg, drawArrows,
-  waveBins, waveColour, WAVE_ICE, drawVectors, drawShallow, drawIsobaths, drawRing, drawBergDrift } from "./map.js";
+import { Projection, setupCanvas, wmoColour, WMO, drawGraticule, drawLand, drawLine, drawMarker, drawBerg, drawArrows,
+  waveBins, waveColour, WAVE_ICE, LAND, OUTSIDE, drawShallow, drawIsobaths, drawRing, drawBergChain, dayColour } from "./map.js";
+import { loadBin, loadJSON, gridField, bilinear, ramp, rampCSS, pixelMap, pixelXY, paintField,
+  drawArrowField, drawBearingField, drawStreaklines, drawBarbs, drawPolylines, drawHatchedQuads } from "./research.js";
 import { createView } from "./view.js";
+import { stereo3412 as stereoXY } from "./research.js";
 
 const $ = (s) => document.querySelector(s);
 const fmtDate = (iso, opt = { weekday: "short", day: "numeric", month: "short" }) =>
   new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { ...opt, timeZone: "UTC" });
-const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
 const BOX = { lat0: -78, lat1: -54, lon0: 0, lon1: 80 };
 const DESTS = {
   approach: { name: "Bharati approach", lat: -68.5, lon: 76.2, note: "100 km north of the station, the point the source project scores" },
   station: { name: "Bharati station edge", lat: -69.40683, lon: 76.19533, note: "nearest open-ocean grid cell to the station" },
 };
+const SEA = [219, 232, 242];     // WMO "ice free"
+// Streaklines integrate the (frozen) daily-mean current for this long at 1x zoom,
+// divided by the zoom so their on-screen length stays about constant.
+const STREAK_S = 7 * 86400;
+const SUSPECT = [196, 200, 204];  // satellite cell the QA flag says not to trust
 
 const S = {
   meta: null, stat: null, lay: null, rules: null, cache: new Map(), wx: null, depth: null,
   cycle: null, lead: 0, depart: 0, limit: 80, obj: "time", dest: "approach",
-  start: { lat: -55.0, lon: 40.0 }, field: "sic",
-  layers: { wind: false, drift: false, depth: false, bergs: true, static: true, ref2019: false, protected: false },
-  picking: false, result: null, proj: new Projection(46),
+  start: { lat: -55.0, lon: 40.0 }, field: "sic", sicMode: "wmo", windStep: 2,
+  layers: { idrift: false, currents: false, wavedir: false, wind: false, depth: false, edges: false,
+    bergs: true, static: true, ref2019: false, protected: false },
+  picking: false, result: null, proj: new Projection(46), samp: {}, hits: [],
 };
 
 async function loadCycle(c) {
@@ -121,39 +129,141 @@ function compute(f) {
   return { r, start, goal, forecast, statik, blocked, alts, decision, wx };
 }
 
+// ------------------------------------------------------------------ research data (lazy)
+// Each file loads the first time a layer needs it; when it lands the chart repaints.
+const RD = {}, pending = new Set();
+function need(key, loader) {
+  if (key in RD) return RD[key];
+  if (!pending.has(key)) {
+    pending.add(key);
+    loader().then((v) => { RD[key] = v; pending.delete(key); if (current) { baseKey = ""; drawChart(current); renderLegend(); renderLayerControls(); } })
+      .catch((e) => { pending.delete(key); showError(e); });
+  }
+  return null;
+}
+const RES = () => S.lay.research;
+const resHere = (f) => !!RES()?.fields && f?.cycle.cycle === RES().cycle;
+const fieldData = (name) => { const m = RES()?.fields?.[name]; return m ? need(name, async () => gridField(m, await loadBin(`data/research/${m.file}`))) : null; };
+const bathyData = () => { const m = RES()?.bathy; return m ? need("bathy", async () => gridField({ ...m, leads: 1 }, await loadBin(`data/research/${m.file}`))) : null; };
+const isobaths = () => (RES()?.bathy ? need("isobaths", () => loadJSON(`data/research/${RES().bathy.isobaths.file}`)) : null);
+const VF = () => RES()?.verif;
+const truthData = () => (VF() ? need("truth", async () => {
+  const buf = await loadBin(`data/research/${VF().truth.file}`), g = VF().grid, n = g.nx * g.ny, D = VF().dates.length;
+  return { conc: (d) => new Uint8Array(buf, d * n, n), qa: (d) => new Uint8Array(buf, (D + d) * n, n) };
+}) : null);
+const truthExtra = () => (VF() ? need("truthExtra", () => loadJSON(`data/research/${VF().truth.extra}`)) : null);
+const modelData = (cy) => { const c = VF()?.model.cycles[cy]; return c ? need(`model:${cy}`, async () => { const buf = await loadBin(`data/research/${c.file}`), g = VF().grid, n = g.nx * g.ny; return (li) => new Uint8Array(buf, li * n, n); }) : null; };
+const modelEdges = (cy) => { const c = VF()?.model.cycles[cy]; return c ? need(`edges:${cy}`, () => loadJSON(`data/research/${c.edges}`)) : null; };
+
+// Is (cycle, lead) verifiable against a satellite day?
+function verifAt(f) {
+  const V = VF(); if (!V || !f) return null;
+  const c = V.model.cycles[f.cycle.cycle]; if (!c) return null;
+  const li = c.leads.indexOf(S.lead); if (li < 0) return null;
+  const date = f.cycle.valid[S.lead], di = V.dates.indexOf(date);
+  return di < 0 ? null : { V, c, li, di, date };
+}
+const verifOn = () => S.layers.edges || S.field === "innov";
+const inGrid = (g, la, lo) => { const fi = (la - g.lat0) / g.dlat, fj = (lo - g.lon0) / g.dlon; return fi >= -0.5 && fj >= -0.5 && fi <= g.ny - 0.5 && fj <= g.nx - 0.5; };
+const windIndex = (W) => { const h = S.lead * 24 + S.windStep * 6; const k = W.meta.step_hours.indexOf(h); return k < 0 ? Math.min(W.steps - 1, S.lead * 4 + S.windStep) : k; };
+
+// Samplers for the cycle and day shown: each returns a value in physical units, or NaN/null outside coverage.
+function samplers(f) {
+  const L = S.lead, out = { res: resHere(f) }, g = S.meta.grids;
+  const one = (d, comp = 0, step = L) => { const a = d.slice(comp, Math.min(step, d.steps - 1)); return (la, lo) => bilinear(d.g, a, d.nodata, d.scale[comp], la, lo); };
+  const two = (d, step = L) => { const u = one(d, 0, step), v = one(d, 1, step); return (la, lo) => { const a = u(la, lo), b = v(la, lo); return Number.isFinite(a) && Number.isFinite(b) ? [a, b] : null; }; };
+  if (out.res) {
+    const sic = fieldData("sic"); if (sic) { out.sic = one(sic); out.sicG = sic.g; }
+    const thk = fieldData("thk"); if (thk) out.thk = one(thk);
+    const dr = fieldData("idrift"); if (dr) out.idrift = two(dr);
+    const cur = fieldData("cur"); if (cur) out.cur = two(cur);
+    const sst = fieldData("sst"); if (sst) out.sst = one(sst);
+    const wav = fieldData("wav"); if (wav) { out.hs = one(wav, 0); out.wdir = one(wav, 1); }
+    if (S.layers.wind) { const w = fieldData("wind"); if (w) { const k = windIndex(w); out.wind = two(w, k); out.windAt = w.meta.valid_utc[k]; } }
+  } else {
+    out.sic = (la, lo) => bilinear(g.sic, f.sic(L), 255, 1, la, lo); out.sicG = g.sic;
+    out.thk = (la, lo) => bilinear(g.thk, f.thk(L), 255, 0.1, la, lo);
+  }
+  const bd = bathyData(); if (bd) { const a = bd.slice(0, 0); out.elev = (la, lo) => bilinear(bd.g, a, bd.nodata, 1, la, lo); }
+  const v = verifOn() ? verifAt(f) : null;
+  if (v) {
+    const T = truthData(), M = modelData(f.cycle.cycle);
+    if (T && M) {
+      const gv = { ny: v.V.grid.ny, nx: v.V.grid.nx, lat0: v.V.grid.y0, dlat: v.V.grid.dy, lon0: v.V.grid.x0, dlon: v.V.grid.dx };
+      const tc = T.conc(v.di), tq = T.qa(v.di), mc = M(v.li), bits = v.V.truth.suspect_bits;
+      const suspect = (x, y) => { const i = Math.round((y - gv.lat0) / gv.dlat), j = Math.round((x - gv.lon0) / gv.dlon); return i >= 0 && j >= 0 && i < gv.ny && j < gv.nx && (tq[i * gv.nx + j] & bits) !== 0; };
+      out.verif = { v, gv, sat: (x, y) => bilinear(gv, tc, 255, 1, y, x), mod: (x, y) => bilinear(gv, mc, 255, 1, y, x), suspect };
+    }
+  }
+  return out;
+}
+
+// What shows where the selected field has no value: land, a depth tint, or the dark surround.
+function background(s, la, lo) {
+  if (s.sicG && inGrid(s.sicG, la, lo) && Number.isNaN(s.sic?.(la, lo))) return LAND;
+  if (s.elev) {
+    const e = s.elev(la, lo);
+    if (e >= 0) return LAND;
+    if (S.layers.depth && e < 0) return ramp("depth", -e / 5000);
+  }
+  return null;
+}
+
+function colourFn(s) {
+  const bins = waveBinsNow();
+  const bg = (la, lo) => background(s, la, lo);
+  switch (S.field) {
+    case "thk": return s.thk && ((k, la, lo) => { const v = s.thk(la, lo); return Number.isNaN(v) ? bg(la, lo) : v < 0.01 ? SEA : ramp("dense", v / 4); });
+    case "sst": return s.sst && ((k, la, lo) => { const v = s.sst(la, lo); return Number.isNaN(v) ? bg(la, lo) : ramp("thermal", (v + 2) / 10); });
+    case "cur": return s.cur && ((k, la, lo) => { const v = s.cur(la, lo); return v ? ramp("speed", Math.hypot(v[0], v[1]) / 0.8) : bg(la, lo); });
+    case "wav": return s.hs && ((k, la, lo) => { const v = s.hs(la, lo); if (!Number.isNaN(v)) return waveColour(bins, v); return s.sic && s.sic(la, lo) > 15 ? WAVE_ICE : bg(la, lo); });
+    case "innov": {
+      if (!s.verif) return null;
+      const xy = pixelXY(S.pm, VF().projection), { sat, mod, suspect } = s.verif;
+      return (k, la, lo) => {
+        const x = xy.x[k], y = xy.y[k];
+        if (suspect(x, y)) return SUSPECT;
+        const t = sat(x, y), m = mod(x, y);
+        return Number.isNaN(t) || Number.isNaN(m) ? bg(la, lo) : ramp("balance", (m - t + 50) / 100);
+      };
+    }
+    default: return s.sic && ((k, la, lo) => { const v = s.sic(la, lo); return Number.isNaN(v) ? bg(la, lo) : S.sicMode === "cont" ? ramp("ice", v / 100) : wmoColour(v); });
+  }
+}
+
 // ------------------------------------------------------------------ chart
+// One wrapper (#stack) holds both canvases. During a gesture view.js moves the
+// wrapper by CSS transform only; on settle drawChart repaints both canvases
+// at the new view in the same task, so raster and lines never separate.
 let baseKey = "", baseSize = "", baseB = null, view = null;
 function drawChart(f) {
   const base = $("#base"), wrap = $("#chartwrap");
-  base.style.transform = "";
+  // Canvases are measured with getBoundingClientRect, which sees the gesture
+  // transform; drop it first (same task as the repaint, so no frame shows it).
+  $("#stack").style.transform = "";
   const w = wrap.clientWidth, h = wrap.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
-  // Resize (and so clear) the raster canvas only when its size changes.
   if (`${w}x${h}@${dpr}` !== baseSize) { baseB = setupCanvas(base); baseSize = `${w}x${h}@${dpr}`; baseKey = ""; }
   const b = baseB, ins = insets();
   S.proj.fit(BOX, b.w, b.h, 24, ins);
   view.setFit(b.w, b.h);
-  const key = [f.cycle.cycle, S.lead, S.field, b.w, b.h, ins.l, ins.r, ins.t, ins.b, view.key()].join("|");
+  const vkey = [b.w, b.h, ins.l, ins.r, ins.t, ins.b, view.key()].join("|");
+  S.samp = samplers(f);
+  const key = [f.cycle.cycle, S.lead, S.field, S.sicMode, S.layers.depth, verifOn(), Object.keys(RD).length, vkey].join("|");
   if (key !== baseKey) {
-    const g = S.meta.grids;
-    let sampler;
-    if (S.field === "wav" && f.wx?.wav) {
-      const bins = waveBinsNow(), W = f.wx.wav(Math.min(S.lead, S.lay.waves.leads - 1)), I = f.sic(S.lead);
-      sampler = gridSampler(g.sic, I, (v, k) => (W[k] === 255 ? WAVE_ICE : waveColour(bins, W[k] / 10)));
-    } else sampler = S.field === "thk"
-      ? gridSampler(g.thk, f.thk(S.lead), thkColour)
-      : gridSampler(g.sic, f.sic(S.lead), (v) => wmoColour(v));
-    paintRaster(b.ctx, S.proj, b.w, b.h, b.dpr, sampler);
-    drawLand(b.ctx, S.proj, S.stat.coast.land, { fill: null, stroke: "rgba(90,70,30,0.8)" });
+    S.pm = pixelMap(S.proj, b.w, b.h, vkey);
+    b.ctx.save(); b.ctx.fillStyle = `rgb(${OUTSIDE})`; b.ctx.fillRect(0, 0, b.w, b.h); b.ctx.restore();
+    const colour = colourFn(S.samp);
+    if (colour) paintField(b.ctx, S.pm, colour);
+    drawLand(b.ctx, S.proj, S.stat.coast.land, { fill: null, stroke: "rgba(70,55,25,0.95)" });
     drawGraticule(b.ctx, S.proj, BOX, { w: b.w, h: b.h, z: view.z });
-    baseKey = key; view.markPainted();
+    baseKey = key;
   }
   drawOverlay(f);
+  view.markPainted();   // clears the wrapper transform in the same task as the repaint
 }
 
 // Wind is drawn over the sea only: the IFS field covers the continent too.
-const onLand = (f) => { const g = S.meta.grids.sic, I = f.sic(0); return (lat, lon) => {
-  const i = Math.round((lat - g.lat0) / g.dlat), j = Math.round((lon - g.lon0) / g.dlon);
-  return i >= 0 && j >= 0 && i < g.ny && j < g.nx && I[i * g.nx + j] === 255; }; };
+const overLand = (s) => (la, lo) => (s.sicG && inGrid(s.sicG, la, lo) && Number.isNaN(s.sic?.(la, lo))) || (s.elev && s.elev(la, lo) >= 0);
 const waveBinsNow = () => waveBins(S.rules.MAX_WAVE_M, S.rules.WAVE_MARGINAL_BAND_M);
 
 // The chart fills the window; on desktop the panels float over it, so fit the
@@ -181,19 +291,34 @@ function thkColour(dm) {
 }
 
 function drawOverlay(f) {
-  const c = $("#overlay"); const { ctx } = setupCanvas(c); const P = S.proj; const R = S.result;
+  const c = $("#overlay"); const { ctx, w, h } = setupCanvas(c); const P = S.proj; const R = S.result, s = S.samp, z = view.z;
+  S.hits = [];
   if (S.layers.protected) {
     for (const a of S.stat.protected.areas) drawLand(ctx, P, a.rings, { fill: "rgba(46,125,79,0.25)", stroke: "rgba(46,125,79,0.9)" });
   }
-  if (S.layers.depth && S.depth) {
-    drawShallow(ctx, P, S.lay.depth.grid, S.depth, S.lay.depth.min_depth_m);
-    drawIsobaths(ctx, P, S.lay.depth.contours.lines, S.lay.depth.contours.levels_m);
+  if (S.layers.depth) {
+    if (S.depth) drawShallow(ctx, P, S.lay.depth.grid, S.depth, S.lay.depth.min_depth_m);
+    const iso = isobaths();
+    if (iso) drawPolylines(ctx, P, iso.lines, { colour: "rgba(24,52,84,0.75)", widthOf: (L) => (L.m >= 1000 ? 1.1 : 0.7), dash: null });
+    else if (S.lay.depth) drawIsobaths(ctx, P, S.lay.depth.contours.lines, S.lay.depth.contours.levels_m);
   }
-  const z = view.z;
-  if (S.layers.drift) drawArrows(ctx, P, S.meta.grids.drift, f.U, f.V, S.lead, z);
-  // Wind: denser arrows and shorter shafts as the view zooms, so the screen density stays about the same.
-  if (S.layers.wind && f.wx?.U) drawVectors(ctx, P, S.lay.wind.grid, f.wx.U, f.wx.V, Math.min(S.lead, S.lay.wind.leads - 1),
-    { scale: 0.25, stride: Math.max(1, Math.round(3 / z)), lenPerUnit: 0.05 / Math.max(1, Math.min(z, 3)), cap: 30, colour: "rgba(90,42,130,0.85)", skip: onLand(f) });
+  if (S.layers.currents && s.cur) drawStreaklines(ctx, P, w, h, s.cur, { seconds: STREAK_S / z, step: 18,
+    colourBy: S.field === "cur" ? null : (sp) => ramp("speed", 0.35 + 0.65 * Math.min(1, sp / 0.8)) });
+  if (S.layers.idrift) {
+    if (s.idrift) drawArrowField(ctx, P, w, h, s.idrift, { step: 30, pxPerMs: 80 });
+    else if (!s.res) drawArrows(ctx, P, S.meta.grids.drift, f.U, f.V, S.lead, z);
+  }
+  if (S.layers.wavedir && s.wdir) drawBearingField(ctx, P, w, h, (la, lo) => (Number.isNaN(s.hs(la, lo)) ? NaN : (s.wdir(la, lo) + 180) % 360), { step: 42 });
+  if (S.layers.wind && s.wind) drawBarbs(ctx, P, w, h, s.wind, { step: 48, skip: overLand(s) });
+  const v = verifOn() ? verifAt(f) : null;
+  if (v) {
+    const X = truthExtra(), E = modelEdges(f.cycle.cycle);
+    if (X?.suspect_quads[v.date]?.length) drawHatchedQuads(ctx, P, X.suspect_quads[v.date]);
+    if (S.layers.edges) {
+      if (E?.[String(S.lead)]) drawPolylines(ctx, P, E[String(S.lead)], { colour: "#18b4dc", width: 2, dash: [7, 4], halo: "rgba(8,16,28,0.85)" });
+      if (X?.edges[v.date]) drawPolylines(ctx, P, X.edges[v.date], { colour: "#ff9a1f", width: 2.2, halo: "rgba(8,16,28,0.85)" });
+    }
+  }
   if (S.layers.ref2019) {
     const pts = S.stat.route2019.coords.map(([lo, la]) => [la, lo]);
     drawLine(ctx, P, pts, { colour: "#12304d", width: 2, dash: [2, 5], halo: true });
@@ -201,15 +326,13 @@ function drawOverlay(f) {
   const toLL = (res) => res.legs.map((l) => [l.lat, l.lon]);
   if (S.layers.static && R.statik) drawLine(ctx, P, toLL(R.statik), { colour: "#12304d", width: 2.5, dash: [9, 6] });
   if (R.forecast) drawLine(ctx, P, toLL(R.forecast), { colour: "#a3156f", width: 3.5 });
-  else if (R.blocked) {
-    drawLine(ctx, P, toLL(R.blocked), { colour: "#b3261e", width: 2.5, dash: [3, 4] });
-  }
+  else if (R.blocked) drawLine(ctx, P, toLL(R.blocked), { colour: "#b3261e", width: 2.5, dash: [3, 4] });
   if (S.layers.bergs && S.lay.bergs) {
     const day = f.cycle.valid[S.lead];
     const items = bergsInBox();
     for (const b of items) drawRing(ctx, P, b.lat, b.lon, bergRadiusKm(b, day));
     const T = tracksHere(f);
-    if (T) for (const t of T.tracks) drawBergDrift(ctx, P, t, { days: trackDays(T), dayShown: S.lead });
+    if (T) for (const t of T.tracks) { try { drawBergChain(ctx, P, t, S.hits); } catch (e) { console.warn("berg chain", t.berg, e); } }
     for (const b of items) drawBerg(ctx, P, b, nearTrack(b, day));
   }
   for (const st of S.stat.stations) {
@@ -218,7 +341,6 @@ function drawOverlay(f) {
   }
   const d = DESTS[S.dest];
   drawMarker(ctx, P, d.lat, d.lon, S.dest === "approach" ? "Approach point" : "", { colour: "#a3156f", align: "left" });
-  // ship: at its position on the forecast track for the valid time shown
   const shipAt = shipPosition();
   drawMarker(ctx, P, shipAt.lat, shipAt.lon, shipAt.label, { shape: "ship", colour: "#a3156f" });
 }
@@ -232,26 +354,32 @@ function shipPosition() {
 }
 
 // Drift tracks belong to one forecast cycle; on other cycles they are not drawn.
-const tracksHere = (f) => (S.lay.berg_tracks && f.cycle.cycle === S.lay.berg_tracks.cycle ? S.lay.berg_tracks : null);
-// Vector length = forecast rate x this many days (the horizon of the "ok" tracks).
+const tracksHere = (f) => (S.lay.berg_tracks && f?.cycle.cycle === S.lay.berg_tracks.cycle ? S.lay.berg_tracks : null);
 const trackDays = (T) => {
-  const d = T.tracks.filter((t) => t.status === "ok" && t.daily_positions?.length).map((t) => t.daily_positions.at(-1).day);
+  const d = T.tracks.filter((t) => t.daily_positions?.length).map((t) => t.daily_positions.at(-1).day);
   return d.length ? Math.max(...d) : 9;
 };
 
-// Berg under the cursor (marker or held marker within 12 px), for the inspector.
+// Berg under the cursor: a forecast day dot, a held marker, or the USNIC fix.
 function bergAt(x, y) {
-  const T = current && tracksHere(current); let best = null, bd = 12;
+  let best = null, bd = 9;
+  for (const hpt of S.hits) { const d = Math.hypot(hpt.x - x, hpt.y - y); if (d < bd) { bd = d; best = hpt; } }
+  const T = current && tracksHere(current);
   for (const b of bergsInBox()) {
-    const t = T?.tracks.find((q) => q.berg === b.name);
-    const spots = [[b.lat, b.lon], ...(t && t.status !== "ok" ? [[t.daily_positions.at(-1).lat, t.daily_positions.at(-1).lon]] : [])];
-    for (const [la, lo] of spots) { const [px, py] = S.proj.fwd(la, lo), d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = { b, t }; } }
+    const [px, py] = S.proj.fwd(b.lat, b.lon), d = Math.hypot(px - x, py - y);
+    if (d < Math.max(bd, 10)) { bd = d; best = { berg: b.name, day: 0 }; }
   }
-  return best;
+  if (!best) return null;
+  const b = bergsInBox().find((q) => q.name === best.berg);
+  return b ? { b, t: T?.tracks.find((q) => q.berg === b.name), hit: best } : null;
 }
-function bergInfo({ b, t }) {
+function bergInfo({ b, t, hit }) {
   const day = current.cycle.valid[S.lead], r = bergRadiusKm(b, day);
-  const rows = [`<b class="pos">Iceberg ${b.name}</b>`, `Area <b>${t?.area_km2 ?? b.area_km2} km²</b>, ${b.len_nm}×${b.wid_nm} nm`, `USNIC fix ${fmtDate(b.observed, { day: "numeric", month: "short" })}${r ? `, uncertainty ±${r.toFixed(0)} km` : ""}`];
+  const rows = [`<b class="pos">Iceberg ${b.name}</b>`];
+  if (hit.held) rows.push(`<b>Held: model stops this berg here</b>`);
+  else if (hit.day) rows.push(`<b>Forecast day ${hit.day}</b> (${fmtDate(addDays(t ? S.lay.berg_tracks.cycle : day, hit.day), { day: "numeric", month: "short" })}): ${(-hit.lat).toFixed(2)}°S ${hit.lon.toFixed(2)}°E${hit.k > 1 ? `, chain drawn ×${hit.k}` : ""}`);
+  else rows.push(`USNIC fix ${fmtDate(b.observed, { day: "numeric", month: "short" })} (day 0)`);
+  rows.push(`Area <b>${t?.area_km2 ?? b.area_km2} km²</b>, ${b.len_nm}×${b.wid_nm} nm${r ? `, uncertainty ±${r.toFixed(0)} km` : ""}`);
   if (!t) rows.push(`<span class="muted">No drift forecast for this berg on this cycle</span>`);
   else {
     rows.push(`Drift <b>${t.net_drift_km_per_day} km/day</b>, bearing <b>${t.bearing_deg}°</b> (net ${t.net_drift_km} km)`);
@@ -261,6 +389,7 @@ function bergInfo({ b, t }) {
   }
   return rows.join("<br>");
 }
+const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
 const bergsInBox = () => (S.lay.bergs?.items ?? []).filter((b) => b.lon >= BOX.lon0 && b.lon <= BOX.lon1 && b.lat <= BOX.lat1);
 // Near = the uncertainty circle comes within 50 nm (92.6 km) of the forecast-aware track.
@@ -355,48 +484,75 @@ function renderSpark() {
 }
 
 function renderLegend() {
-  let head;
-  if (S.field === "wav" && current?.wx?.wav) {
+  const f = current, s = S.samp, cards = [];
+  const scale = (title, sub, gradient, ticks, note = "") => `<div class="card"><div class="ttl">${title} <span class="muted">${sub}</span></div>
+    <div class="ramp" style="background:${gradient}"></div><div class="ticks">${ticks.map((t) => `<span style="left:${t[0]}%">${t[1]}</span>`).join("")}</div>${note}</div>`;
+  const res = f && resHere(f), resTxt = res ? "1/12°" : "0.25° archive";
+  if (S.field === "wav" && s.hs) {
     const bins = waveBinsNow();
-    head = `<span class="ttl">Significant wave height, daily max</span> <span class="muted">CMEMS; black tick marks the assumed ${Number.isInteger(S.rules.MAX_WAVE_M) ? S.rules.MAX_WAVE_M.toFixed(1) : S.rules.MAX_WAVE_M} m limit</span>
-      <div class="scale">${bins.map((b) => `<span class="${b.dark ? "dark" : ""} ${b.limit ? "limit" : ""}" style="background:rgb(${b.rgb})">${b.label}</span>`).join("")}<span style="background:rgb(${WAVE_ICE})">Sea ice</span></div>`;
-  } else if (S.field === "thk") {
-    head = `<span class="ttl">Ice thickness</span> <span class="muted">CMEMS sithick, 0.5° cells</span>
-      <div class="scale"><span style="background:rgb(${thkColour(0)})">0</span><span style="background:rgb(${thkColour(5)})">0.5 m</span><span style="background:rgb(${thkColour(10)})">1 m</span><span class="dark" style="background:rgb(${thkColour(20)})">2 m</span><span class="dark" style="background:rgb(${thkColour(30)})">3 m+</span></div>`;
-  } else {
-    head = `<span class="ttl">Total ice concentration</span> <span class="muted">WMO colour code</span>
-      <div class="scale">${WMO.map((c) => `<span style="background:rgb(${c.rgb})">${c.label}</span>`).join("")}<span style="background:rgb(231,220,184)">Land</span></div>`;
+    cards.push(`<div class="card"><div class="ttl">Wave height, daily max <span class="muted">CMEMS, m; tick = assumed ${Number.isInteger(S.rules.MAX_WAVE_M) ? S.rules.MAX_WAVE_M.toFixed(1) : S.rules.MAX_WAVE_M} m limit</span></div>
+      <div class="scale">${bins.map((b) => `<span class="${b.dark ? "dark" : ""} ${b.limit ? "limit" : ""}" style="background:rgb(${b.rgb})">${b.label}</span>`).join("")}<span style="background:rgb(${WAVE_ICE})">Ice</span></div></div>`);
+  } else if (S.field === "thk") cards.push(scale("Ice thickness", `CMEMS sithick, m, ${resTxt}`, rampCSS("dense"), [[0, "0"], [25, "1"], [50, "2"], [75, "3"], [100, "4+"]]));
+  else if (S.field === "sst") cards.push(scale("Sea-surface temperature", "CMEMS thetao, °C", rampCSS("thermal"), [[0, "−2"], [1, ""], [20, "0"], [40, "2"], [60, "4"], [80, "6"], [100, "8+"]],
+    `<div class="mark" style="left:${(100 * (RES().fields.sst.freezing_point_c + 2) / 10).toFixed(1)}%"></div><p class="xsmall muted">Mark: ${RES().fields.sst.freezing_point_c} °C, ${RES().fields.sst.freezing_point_note}.</p>`));
+  else if (S.field === "cur") cards.push(scale("Surface current speed", "CMEMS uo/vo, m/s", rampCSS("speed"), [[0, "0"], [25, "0.2"], [50, "0.4"], [75, "0.6"], [100, "0.8+"]]));
+  else if (S.field === "innov") cards.push(scale("Innovation, model − satellite", "ice concentration, points", rampCSS("balance", 9), [[0, "−50"], [25, "−25"], [50, "0"], [75, "+25"], [100, "+50"]],
+    `<p class="xsmall muted">Red: the model has more ice than the satellite saw. Blue: less. Grey hatch: satellite cells its QA flag marks untrustworthy (not scored).</p>`));
+  else if (S.sicMode === "cont") cards.push(scale("Ice concentration", `CMEMS, %, ${resTxt}`, rampCSS("ice"), [[0, "0"], [25, "25"], [50, "50"], [75, "75"], [100, "100"]]));
+  else cards.push(`<div class="card"><div class="ttl">Ice concentration <span class="muted">WMO colour code, ${resTxt}</span></div>
+      <div class="scale">${WMO.map((c) => `<span style="background:rgb(${c.rgb})">${c.label}</span>`).join("")}<span style="background:rgb(${LAND})">Land</span></div></div>`);
+
+  const T = S.layers.bergs && f && tracksHere(f);
+  if (T) {
+    const n = trackDays(T), dots = Array.from({ length: n + 1 }, (_, k) => k === 0
+      ? `<span class="dd"><i class="d0"></i>0</span>` : `<span class="dd"><i style="background:rgb(${dayColour(k, Math.max(n, 9))})"></i>${k}</span>`).join("");
+    cards.push(`<div class="card"><div class="ttl">Iceberg drift forecast <span class="muted">from ${fmtDate(T.cycle, { day: "numeric", month: "short" })}</span></div>
+      <div class="days">${dots}</div><p class="muted">Dot n: forecast position after n days; ◆ day 0 is the USNIC fix. <i class="swatch-held"></i> held (grounded or unknown). ×k: short chain magnified. Ring: ±${S.lay.bergs.uncertainty_km_per_day} km/day. Advisory only.</p></div>`);
   }
   const keys = [`<span><i class="swatch-line"></i>Forecast-aware route</span>`];
   if (S.layers.static) keys.push(`<span><i class="swatch-line dash"></i>Plan on today's ice</span>`);
   if (S.layers.ref2019) keys.push(`<span><i class="swatch-line ref"></i>PolarRoute 2019</span>`);
-  if (S.layers.wind && current?.wx?.U) keys.push(`<span><i class="swatch-arrow wind"></i>Wind, ECMWF ${S.lay.wind.valid_utc[Math.min(S.lead, S.lay.wind.leads - 1)].slice(11)} UTC</span>`);
-  if (S.layers.drift) keys.push(`<span><i class="swatch-arrow"></i>Ice drift</span>`);
-  if (S.layers.depth && S.depth) keys.push(`<span><i class="swatch-hatch"></i>Under ${S.lay.depth.min_depth_m} m (IBCSO, not a chart)</span>`, `<span><i class="swatch-line iso"></i>${S.lay.depth.contours.levels_m.join(", ")} m isobaths</span>`);
-  if (S.layers.bergs && S.lay.bergs) keys.push(`<span>◆ Iceberg</span><span><i class="swatch-ring"></i>Position uncertainty, +${S.lay.bergs.uncertainty_km_per_day} km per day since the fix</span>`);
-  const T = S.layers.bergs && current && tracksHere(current);
-  if (T) keys.push(`<span><i class="swatch-line track"></i>Forecast track, one vertex per day</span>`,
-    `<span><i class="swatch-vec"></i>Arrow: net drift over ${trackDays(T)} days at the forecast rate (km/day × ${trackDays(T)}), to map scale, drawn at least 12 px long</span>`,
-    `<span><i class="swatch-held"></i>Held: the model stops the berg (grounded or unknown); no arrow</span>`);
-  else if (S.layers.bergs && S.lay.berg_tracks) keys.push(`<span>Drift vectors exist for the ${fmtDate(S.lay.berg_tracks.cycle, { day: "numeric", month: "short" })} forecast only.</span>`);
-  if (S.field === "thk") keys.push(`<span>Model thickness hints at the POLARIS stage; it does not observe it.</span>`);
-  $("#legend").innerHTML = head + `<div class="keys">${keys.join("")}</div>`;
+  if (S.layers.currents && s.cur) keys.push(`<span><i class="swatch-stream"></i>Streakline: ${(STREAK_S / 86400 / view.z).toFixed(1)} days of flow in the day's mean current, tail to head</span>`);
+  if (S.layers.idrift) keys.push(`<span><i class="swatch-arrow"></i>Ice drift, ${s.res ? "8 px per 10 cm/s" : "0.25° archive"}</span>`);
+  if (S.layers.wavedir && s.wdir) keys.push(`<span><i class="swatch-arrow wave"></i>Peak waves travel this way (VMDR + 180°)</span>`);
+  if (S.layers.wind && s.wind) keys.push(`<span><i class="swatch-barb"></i>Wind barb, kt: half 5, full 10, pennant 50; ${s.windAt.slice(11)} UTC; SH feathers</span>`);
+  if (S.layers.depth) keys.push(`<span><i class="swatch-hatch"></i>Under ${S.lay.depth?.min_depth_m} m</span>`, `<span><i class="swatch-line iso"></i>${RES()?.bathy?.isobaths.levels_m.join(", ") ?? ""} m isobaths</span>`);
+  if (S.layers.edges && f && verifAt(f)) keys.push(`<span><i class="swatch-line edge-sat"></i>Satellite 15% edge</span>`, `<span><i class="swatch-line edge-mod"></i>Model 15% edge</span>`);
+  cards.push(`<div class="card keys">${keys.join("")}</div>`);
+  $("#legend").innerHTML = cards.join("");
 }
 
 const reasonFor = (layer) => (S.lay.missing.find((m) => m.layer === layer)?.reason) ?? "not built";
 
-// Enable or disable layer controls for the cycle shown, with the reason in words.
+// Enable or disable layer rows for the cycle and day shown, with the reason in words.
 function renderLayerControls() {
-  const here = !!current?.wx, cyc = fmtDate(S.lay.cycle, { day: "numeric", month: "short" });
+  const f = current, res = resHere(f), cyc = RES() ? fmtDate(RES().cycle, { day: "numeric", month: "short" }) : "";
+  const only = `Full resolution exists for the ${cyc} forecast only`;
   const set = (sel, ok, hint) => {
-    const el = document.querySelector(sel); el.disabled = !ok;
+    const el = document.querySelector(sel); if (!el) return; el.disabled = !ok;
     const h = el.closest("label").querySelector(".hint"); if (h) h.textContent = ok ? "" : hint;
   };
-  set('input[name="field"][value="wav"]', here && !!S.lay.waves, S.lay.waves ? `Archived for the ${cyc} forecast only` : reasonFor("waves"));
-  set('[data-layer="wind"]', here && !!S.lay.wind, S.lay.wind ? `Archived for the ${cyc} forecast only` : reasonFor("wind"));
-  set('[data-layer="depth"]', !!S.depth, reasonFor("depth"));
+  for (const [sel, key] of [['input[name="field"][value="cur"]', "cur"], ['[data-layer="currents"]', "cur"], ['input[name="field"][value="sst"]', "sst"],
+    ['input[name="field"][value="wav"]', "wav"], ['[data-layer="wavedir"]', "wav"], ['[data-layer="wind"]', "wind"]])
+    set(sel, res && !!RES().fields[key], RES()?.fields?.[key] ? only : reasonFor(`research.${key}`));
+  set('[data-layer="depth"]', !!S.lay.depth || !!RES()?.bathy, reasonFor("depth"));
   set('[data-layer="bergs"]', !!S.lay.bergs, reasonFor("bergs"));
-  if (S.field === "wav" && !(here && S.lay.waves)) { S.field = "sic"; document.querySelector('input[name="field"][value="sic"]').checked = true; }
+  $("#sub-sic").textContent = res ? "CMEMS siconc, 1/12°" : "CMEMS, 0.25° archive on this forecast";
+  $("#resnote").textContent = res ? `Full 1/12° fields for this forecast.` : `0.25° archive. ${only}.`;
+  if (document.querySelector(`input[name="field"][value="${S.field}"]`)?.disabled) { S.field = "sic"; document.querySelector('input[name="field"][value="sic"]').checked = true; }
+  // verification: reason + jump on unverifiable days
+  const V = VF(), note = $("#verifnote");
+  if (!V) { set('[data-layer="edges"]', false, reasonFor("verification")); set('input[name="field"][value="innov"]', false, reasonFor("verification")); note.hidden = true; }
+  else {
+    const ok = !!verifAt(f);
+    note.hidden = !(verifOn() && !ok);
+    if (!ok) $("#verifwhy").textContent = `No satellite truth for ${fmtDate(f.cycle.valid[S.lead], { day: "numeric", month: "short", year: "numeric" })}: the NSIDC near-real-time record here runs ${fmtDate(V.first, { day: "numeric", month: "short" })} to ${fmtDate(V.last, { day: "numeric", month: "short", year: "numeric" })}. The latest forecast with every day verifiable was issued ${fmtDate(V.latest_full_cycle, { day: "numeric", month: "short" })}.`;
+  }
+  // wind steps for the day shown
+  const W = RES()?.fields?.wind, ws = $("#windsteps");
+  ws.hidden = !(S.layers.wind && res && W);
+  if (W) ws.innerHTML = [0, 1, 2, 3].map((k) => { const hh = S.lead * 24 + k * 6, i = W.step_hours.indexOf(hh);
+    return `<button data-wstep="${k}" aria-pressed="${k === S.windStep}" ${i < 0 ? "disabled" : ""}>${String(k * 6).padStart(2, "0")} UTC</button>`; }).join("");
 }
 
 // The source project's own router on the latest real forecast (scripts/real_route_run.py).
@@ -451,7 +607,8 @@ function renderCredits() {
     L.wind && L.wind.licence.split(", http")[0],
     L.depth && (() => { const m = L.depth.citation.match(/(Dorschel, B\.)[^(]*\((\d{4})\)/); return `IBCSO v2${m ? `, Dorschel et al. ${m[2]}` : ""} (${L.depth.licence.match(/CC-BY-[\d.]+/)?.[0] ?? "see credits"})`; })(),
     L.bergs && "US National Ice Center", "Natural Earth"].filter(Boolean);
-  $("#attribution").innerHTML = short.join(" | ") + ` | <a href="#credits">Full credits</a>`;
+  $("#attribution").innerHTML = `<a href="#credits">Credits</a> | ` + short.join(" | ");
+  $("#attribution").title = short.join(" | ");
   $("#credits").innerHTML = `<h3>Data and credits</h3>${parts.map((t) => `<p>${t}</p>`).join("")}
     <p>Routing, POLARIS and the gates run in your browser, ported from the project's Python. Nothing on this page is simulated. Advisory only: not for navigation.</p>`;
 }
@@ -498,6 +655,35 @@ function bindPressed(selector, attr, onPick) {
   }));
 }
 
+// Degrees-minutes-seconds plus decimal, like a chart plotter.
+function coordText(lat, lon) {
+  const dms = (v) => { const a = Math.abs(v), d = Math.floor(a), m = Math.floor((a - d) * 60), s = Math.round(((a - d) * 60 - m) * 60); return `${String(d).padStart(2, "0")}° ${String(m).padStart(2, "0")}′ ${String(s).padStart(2, "0")}″`; };
+  return `<b>${lat < 0 ? "S" : "N"}</b> ${dms(lat)}, <b>${lon < 0 ? "W" : "E"}</b> ${dms(lon)} <span class="muted">(${lat.toFixed(3)}, ${lon.toFixed(3)})</span>`;
+}
+
+// Every active layer's value at the cursor.
+function inspect(f, lat, lon) {
+  const s = S.samp, rows = [], dirTo = (u, v) => ((Math.atan2(u, v) * 180 / Math.PI + 360) % 360).toFixed(0);
+  const sic = s.sic?.(lat, lon);
+  if (s.sicG && !inGrid(s.sicG, lat, lon)) rows.push(`<span class="muted">Outside the ${s.res ? "1/12°" : "0.25°"} forecast box</span>`);
+  else if (Number.isNaN(sic)) rows.push("Land or ice shelf");
+  else if (sic !== undefined) rows.push(`Ice <b>${sic.toFixed(0)}%</b>${s.res ? "" : " (0.25°)"}`);
+  const thk = s.thk?.(lat, lon); if (Number.isFinite(thk)) rows.push(`Thickness <b>${thk.toFixed(2)} m</b>`);
+  const dr = s.idrift?.(lat, lon); if (dr && S.layers.idrift) rows.push(`Ice drift <b>${(Math.hypot(dr[0], dr[1]) * 100).toFixed(1)} cm/s</b> toward ${dirTo(dr[0], dr[1])}°`);
+  const cu = s.cur?.(lat, lon); if (cu && (S.layers.currents || S.field === "cur")) rows.push(`Current <b>${(Math.hypot(cu[0], cu[1]) * 100).toFixed(1)} cm/s</b> toward ${dirTo(cu[0], cu[1])}°`);
+  const t = s.sst?.(lat, lon); if (Number.isFinite(t) && S.field === "sst") rows.push(`SST <b>${t.toFixed(2)} °C</b>`);
+  const hs = s.hs?.(lat, lon); if (Number.isFinite(hs) && (S.field === "wav" || S.layers.wavedir)) rows.push(`Waves <b>${hs.toFixed(2)} m</b> from ${s.wdir(lat, lon).toFixed(0)}°`);
+  const w = s.wind?.(lat, lon); if (w) rows.push(`Wind <b>${(Math.hypot(w[0], w[1]) * 1.943844).toFixed(0)} kt</b> from ${dirTo(-w[0], -w[1])}° <span class="muted">${s.windAt.slice(5).replace("T", " ")} UTC</span>`);
+  const e = s.elev?.(lat, lon); if (Number.isFinite(e) && S.layers.depth) rows.push(e < 0 ? `Depth <b>${(-e).toFixed(0)} m</b> (box mean)` : `Elevation ${e.toFixed(0)} m`);
+  if (s.verif && S.pm) {
+    const V = VF().projection, [x, y] = stereoXY(lat, lon, V);
+    const sat = s.verif.sat(x, y), mod = s.verif.mod(x, y);
+    if (s.verif.suspect(x, y)) rows.push(`Satellite: <b>QA-suspect cell</b>, not scored`);
+    else if (Number.isFinite(sat)) rows.push(`Satellite <b>${sat.toFixed(0)}%</b>, model ${Number.isFinite(mod) ? `${mod.toFixed(0)}%` : "–"}${Number.isFinite(mod) ? `, innovation <b>${(mod - sat) >= 0 ? "+" : ""}${(mod - sat).toFixed(0)}</b>` : ""}`);
+  }
+  return rows.join("<br>") || "–";
+}
+
 async function main() {
   const json = (p) => fetch(p).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r.json(); });
   [S.meta, S.stat, S.lay] = await Promise.all([json("data/meta.json"), json("data/static.json"), json("data/layers.json")]);
@@ -512,9 +698,8 @@ async function main() {
   renderFinding(); renderCredits();
   $("#bergadv").textContent = S.lay.berg_tracks ? `Advisory: ${S.lay.berg_tracks.validation.replace(/^see berg_hindcast\.json\s*[—-]\s*/, "")}.` : "";
   view = createView({
-    proj: S.proj, surface: $("#overlay"), base: $("#base"),
-    onFrame: () => current && drawOverlay(current),          // vectors redraw every frame during a gesture
-    onSettle: () => current && drawChart(current),           // the raster repaints once the gesture stops
+    proj: S.proj, surface: $("#chartwrap"), stack: $("#stack"),
+    onSettle: () => current && drawChart(current),           // both canvases repaint together once the gesture stops
     onChange: (z) => { $("#zoomLvl").textContent = `${z.toFixed(1)}×`; $("#zoomOut").disabled = z <= 1; $("#zoomIn").disabled = z >= 8; $("#zoomReset").disabled = z <= 1; },
   });
   const cycles = S.meta.cycles;
@@ -543,46 +728,46 @@ async function main() {
   $("#stage").addEventListener("change", renderPolaris);
   bindPressed("[data-obj]", "obj", (v) => { S.obj = v; refresh(); });
   bindPressed("[data-dest]", "dest", (v) => { S.dest = v; refresh(); });
-  document.querySelectorAll('input[name="field"]').forEach((r) => r.addEventListener("change", () => { if (r.checked) { S.field = r.value; refresh({ recompute: false }); } }));
+  // Verification defaults to the latest fully verifiable forecast: switching it on
+  // from a day with no satellite truth jumps there (the reason stays on screen).
+  const jumpToVerifiable = () => {
+    const V = VF(); if (!V?.latest_full_cycle) return;
+    stopPlay(); S.lead = Math.min(S.lead, 9); setCycle(V.latest_full_cycle);
+  };
+  const maybeJump = () => { if (verifOn() && current && !verifAt(current)) jumpToVerifiable(); };
+  document.querySelectorAll('input[name="field"]').forEach((r) => r.addEventListener("change", () => { if (r.checked) { S.field = r.value; maybeJump(); refresh({ recompute: false }); } }));
   document.querySelectorAll("[data-layer]").forEach((cb) => {
     cb.checked = S.layers[cb.dataset.layer];
-    cb.addEventListener("change", () => { S.layers[cb.dataset.layer] = cb.checked; drawOverlay(current); renderLegend(); });
+    cb.addEventListener("change", () => { S.layers[cb.dataset.layer] = cb.checked; maybeJump(); refresh({ recompute: false }); });
   });
+  $("#verifJump").addEventListener("click", jumpToVerifiable);
+  document.querySelectorAll("[data-sicmode]").forEach((b) => b.addEventListener("click", () => {
+    document.querySelectorAll("[data-sicmode]").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
+    S.sicMode = b.dataset.sicmode; refresh({ recompute: false });
+  }));
+  $("#windsteps").addEventListener("click", (e) => { const b = e.target.closest("[data-wstep]"); if (!b || b.disabled) return; S.windStep = +b.dataset.wstep; refresh({ recompute: false }); });
+  // Play: step the forecast day every 1.5 s, animating whatever layers are on.
+  let playT = 0;
+  const stopPlay = () => { clearInterval(playT); playT = 0; $("#play").setAttribute("aria-pressed", "false"); $("#play").setAttribute("aria-label", "Play the forecast days"); };
+  $("#play").addEventListener("click", () => {
+    if (playT) return stopPlay();
+    $("#play").setAttribute("aria-pressed", "true"); $("#play").setAttribute("aria-label", "Pause");
+    playT = setInterval(() => { if (!current) return; S.lead = (S.lead + 1) % current.leads; refresh({ recompute: false }); }, 1500);
+  });
+  for (const id of ["#leadPrev", "#leadNext", "#cyclePrev", "#cycleNext", "#cycle"]) $(id).addEventListener("pointerdown", stopPlay);
   $("#pickstart").addEventListener("click", () => {
     S.picking = !S.picking; $("#pickstart").setAttribute("aria-pressed", String(S.picking));
     $("#pickstart").textContent = S.picking ? "Click the chart" : "Move ship";
   });
 
-  const over = $("#overlay");
+  const over = $("#chartwrap");
   over.addEventListener("mousemove", (e) => {
-    const r = over.getBoundingClientRect();
-    const [lat, lon] = S.proj.inv(e.clientX - r.left, e.clientY - r.top);
-    const g = S.meta.grids; const f = current; if (!f) return;
-    const cell = (gg, arr) => { const i = Math.round((lat - gg.lat0) / gg.dlat), j = Math.round((lon - gg.lon0) / gg.dlon); return i < 0 || j < 0 || i >= gg.ny || j >= gg.nx ? null : arr[i * gg.nx + j]; };
-    const sic = cell(g.sic, f.sic(S.lead));
-    const thk = cell(g.thk, f.thk(S.lead));
-    const dn = g.drift.ny * g.drift.nx;
-    const u = cell(g.drift, f.U.subarray(S.lead * dn, (S.lead + 1) * dn)), v = cell(g.drift, f.V.subarray(S.lead * dn, (S.lead + 1) * dn));
-    const pos = `<b class="pos">${(-lat).toFixed(2)}°S ${lon.toFixed(2)}°E</b>`;
-    const hit = S.layers.bergs && S.lay.bergs ? bergAt(e.clientX - r.left, e.clientY - r.top) : null;
-    if (hit) { $("#readout").innerHTML = `${pos}<br>${bergInfo(hit)}`; return; }
-    let txt;
-    if (sic === null) txt = `${pos}<br><span class="muted">Outside the forecast box</span>`;
-    else if (sic === 255) txt = `${pos}<br>Land or ice shelf`;
-    else {
-      const dir = (a, b) => ((Math.atan2(a, b) * 180 / Math.PI + 360) % 360).toFixed(0);
-      const rows = [`Ice <b>${sic}%</b>${thk !== null && thk !== 255 ? `, <b>${(thk / 10).toFixed(1)} m</b> thick` : ""}`];
-      if (u !== null && u !== -128) rows.push(`Ice drift ${Math.hypot(u, v).toFixed(0)} cm/s toward ${dir(u, v)}°`);
-      if (f.wx?.wav) { const w = cell(g.sic, f.wx.wav(Math.min(S.lead, S.lay.waves.leads - 1))); rows.push(w === 255 || w === null ? "Waves: no value (ice or coast)" : `Waves up to <b>${(w / 10).toFixed(1)} m</b>`); }
-      if (f.wx?.U) {
-        const G = S.lay.wind.grid, n = G.ny * G.nx, l = Math.min(S.lead, S.lay.wind.leads - 1);
-        const a = cell(G, f.wx.U.subarray(l * n, (l + 1) * n)), b = cell(G, f.wx.V.subarray(l * n, (l + 1) * n));
-        if (a !== null) rows.push(`Wind <b>${(Math.hypot(a, b) * 0.25).toFixed(1)} m/s</b> from ${dir(-a, -b)}°`);
-      }
-      if (S.depth) { const e = cell(S.lay.depth.grid, S.depth); if (e !== null) rows.push(e === 32767 ? "Depth: mostly dry block" : `Depth at least <b>${Math.max(0, -e)} m</b> (shallowest in block)`); }
-      txt = `${pos}<br>${rows.join("<br>")}`;
-    }
-    $("#readout").innerHTML = txt;
+    const r = over.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    const [lat, lon] = S.proj.inv(x, y);
+    const f = current; if (!f) return;
+    $("#coordbar").innerHTML = coordText(lat, lon);
+    const hit = S.layers.bergs && S.lay.bergs ? bergAt(x, y) : null;
+    $("#readout").innerHTML = hit ? bergInfo(hit) : inspect(f, lat, lon);
   });
   over.addEventListener("click", (e) => {
     if (!S.picking) return;

@@ -10,8 +10,8 @@ export const WMO = [
   { max: 85, rgb: [255, 125, 7], label: "7–8/10" },
   { max: 101, rgb: [255, 0, 0], label: "9–10/10" },
 ];
-const LAND = [231, 220, 184];
-const OUTSIDE = [21, 30, 44];   // outside the forecast box: a shade off the page bg,
+export const LAND = [231, 220, 184];
+export const OUTSIDE = [21, 30, 44];   // outside the forecast box: a shade off the page bg,
                                 // so a drawn-but-empty chart never masquerades as "nothing rendered"
 export function wmoColour(pct) { for (const c of WMO) if (pct < c.max) return c.rgb; return WMO[WMO.length - 1].rgb; }
 
@@ -248,7 +248,7 @@ export function drawIsobaths(ctx, proj, lines, levels) {
 
 // A circle of radiusKm around a point, as a ring of lat/lon points so the
 // projection bends it correctly.
-export function drawRing(ctx, proj, lat, lon, radiusKm, { stroke = "rgba(18,48,77,0.85)", fill = "rgba(18,48,77,0.07)" } = {}) {
+export function drawRing(ctx, proj, lat, lon, radiusKm, { stroke = "rgba(18,48,77,0.55)", fill = null } = {}) {
   if (!(radiusKm > 0)) return;
   const dLat = radiusKm / 111.32, dLon = radiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
   ctx.save(); ctx.beginPath();
@@ -256,7 +256,7 @@ export function drawRing(ctx, proj, lat, lon, radiusKm, { stroke = "rgba(18,48,7
     const a = (k / 48) * Math.PI * 2; const [x, y] = proj.fwd(lat + dLat * Math.cos(a), lon + dLon * Math.sin(a));
     k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
   }
-  ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.setLineDash([4, 3]); ctx.strokeStyle = stroke; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.closePath(); if (fill) { ctx.fillStyle = fill; ctx.fill(); } ctx.setLineDash([3, 3]); ctx.strokeStyle = stroke; ctx.lineWidth = 0.8; ctx.stroke();
   ctx.restore();
 }
 
@@ -268,40 +268,49 @@ export function destination(lat, lon, bearingDeg, km) {
   return [p2 * 180 / Math.PI, l2 * 180 / Math.PI];
 }
 
-// Forecast drift for one berg: its daily track, then either a drift vector
-// (status ok) or a "held" marker where the model stops it (grounded or
-// unknown). The vector is drawn to map scale: net km/day x days, at least
-// minPx long so its direction stays readable at low zoom.
-export function drawBergDrift(ctx, proj, t, { days, minPx = 12, dayShown = null } = {}) {
-  if (!t.daily_positions?.length) return;   // a malformed track must not blank the whole overlay
-  const pts = t.daily_positions.map((p) => proj.fwd(p.lat, p.lon));
+// Forecast drift for one berg as a day-dot chain (IcySea-style): a bold line
+// through the daily forecast positions with a dot per day, graded from deep
+// (day 1) to pale (last day); day 0 is the USNIC fix, drawn by drawBerg on
+// top. Dots and line have a fixed screen size, so the chain never shrinks
+// below legibility. If the whole chain spans fewer than MIN_SPAN px it is
+// drawn magnified about the fix and labelled "×k" (a schematic, flagged as
+// such; the inspector gives true positions). Grounded/unknown bergs stop
+// where the model stops them, with a held (anchor) marker.
+export const DAY_DEEP = [11, 79, 108], DAY_PALE = [226, 241, 247];
+export const dayColour = (k, n) => DAY_DEEP.map((c, i) => Math.round(c + (DAY_PALE[i] - c) * (n <= 1 ? 0 : (k - 1) / (n - 1))));
+const MIN_SPAN = 24;
+export function drawBergChain(ctx, proj, t, hits = null) {
+  if (!t.daily_positions?.length) return;
+  const raw = t.daily_positions.map((p) => proj.fwd(p.lat, p.lon));
+  const [x0, y0] = raw[0];
+  let span = 0; for (const [x, y] of raw) span = Math.max(span, Math.hypot(x - x0, y - y0));
+  const k = span > 0 && span < MIN_SPAN ? Math.min(25, Math.ceil(MIN_SPAN / span)) : 1;
+  const pts = raw.map(([x, y]) => [x0 + (x - x0) * k, y0 + (y - y0) * k]);
+  const n = t.daily_positions.at(-1).day;
   ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
-  const path = () => { ctx.beginPath(); pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); };
-  path(); ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 3.2; ctx.stroke();
-  path(); ctx.strokeStyle = "#0b4f6c"; ctx.lineWidth = 1.4; ctx.stroke();
-  const [x0, y0] = pts[0];
-  if (t.status === "ok") {
-    const p0 = t.daily_positions[0];
-    const [la, lo] = destination(p0.lat, p0.lon, t.bearing_deg, t.net_drift_km_per_day * days);
-    let [x1, y1] = proj.fwd(la, lo);
-    const L = Math.hypot(x1 - x0, y1 - y0), a = Math.atan2(y1 - y0, x1 - x0);
-    if (L < minPx) { x1 = x0 + minPx * Math.cos(a); y1 = y0 + minPx * Math.sin(a); }
-    for (const [col, wd] of [["rgba(255,255,255,0.9)", 4.5], ["#0b4f6c", 2.2]]) {
-      ctx.strokeStyle = col; ctx.lineWidth = wd; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-    }
-    ctx.beginPath(); ctx.moveTo(x1 + 2 * Math.cos(a), y1 + 2 * Math.sin(a));
-    ctx.lineTo(x1 - 9 * Math.cos(a - 0.45), y1 - 9 * Math.sin(a - 0.45)); ctx.lineTo(x1 - 9 * Math.cos(a + 0.45), y1 - 9 * Math.sin(a + 0.45)); ctx.closePath();
-    ctx.fillStyle = "#0b4f6c"; ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fill();
-  } else {
-    const [xs, ys] = pts[pts.length - 1];   // where the model stops it
-    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#0b4f6c"; ctx.lineWidth = 1.6;
-    ctx.beginPath(); ctx.rect(xs - 5.5, ys - 5.5, 11, 11); ctx.fill(); ctx.stroke();
+  const path = () => { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); };
+  path(); ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 4.5; ctx.stroke();
+  path(); ctx.strokeStyle = "#0b1a2a"; ctx.lineWidth = 2.5; ctx.stroke();
+  t.daily_positions.forEach((p, i) => {
+    if (p.day === 0) return;
+    const [x, y] = pts[i];
+    ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI * 2);
+    ctx.fillStyle = `rgb(${dayColour(p.day, Math.max(n, 9))})`; ctx.fill();
+    ctx.lineWidth = 1.3; ctx.strokeStyle = "#0b1a2a"; ctx.stroke();
+    hits?.push({ x, y, berg: t.berg, day: p.day, lat: p.lat, lon: p.lon, k });
+  });
+  if (t.status !== "ok") {
+    const [xs, ys] = pts.at(-1);
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#0b1a2a"; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.rect(xs - 6, ys - 6, 12, 12); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(xs, ys - 3.5); ctx.lineTo(xs, ys + 3); ctx.moveTo(xs - 3, ys + 1); ctx.quadraticCurveTo(xs, ys + 4.5, xs + 3, ys + 1); ctx.moveTo(xs - 2, ys - 2); ctx.lineTo(xs + 2, ys - 2);
-    ctx.lineWidth = 1.2; ctx.stroke();   // anchor glyph
+    ctx.lineWidth = 1.2; ctx.stroke();
+    hits?.push({ x: xs, y: ys, berg: t.berg, held: true, k });
   }
-  if (dayShown !== null) {
-    const p = t.daily_positions.find((q) => q.day === dayShown);
-    if (p) { const [x, y] = proj.fwd(p.lat, p.lon); ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = "#0b4f6c"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.2; ctx.fill(); ctx.stroke(); }
+  if (k > 1) {
+    const [xe, ye] = pts.at(-1);
+    ctx.font = "10px 'Atkinson Hyperlegible', sans-serif"; ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.strokeText(`×${k}`, xe + 6, ye + 3); ctx.fillStyle = "#33475b"; ctx.fillText(`×${k}`, xe + 6, ye + 3);
   }
   ctx.restore();
 }
