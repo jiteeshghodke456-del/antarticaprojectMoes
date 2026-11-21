@@ -1,10 +1,16 @@
 """Build the static data files the GitHub Pages demo reads.
 
-Input : the sih26059-antarctic-navigation repo (path as argv[1])
+Input : the Dakshin source repo (path as argv[1]; on GitHub still named
+         sih26059-antarctic-navigation)
          - data/cmems_forecast_archive/cmems_siconc_<cycle>.nc  (CMEMS GLO12 forecast,
            one file per daily forecast cycle, 1/12 degree, 0-80E, 78-55S)
          - data/icebergs/usnic_antarctic_*.csv                   (US National Ice Center)
-         - isih/figures/*.json                                    (2019 validation outputs)
+         - data/cmems_forecast_archive/cmems_wav_<cycle>.nc      (CMEMS wave forecast, daily max)
+         - data/ecmwf_wind/ecmwf_wind_<cycle>_00z.nc             (ECMWF open-data IFS 10 m wind)
+         - data/bathymetry/ibcso_v2_corridor_0p05.nc             (IBCSO v2 subset)
+         - data/icebergs/archive/AntarcticIcebergs_*.csv         (USNIC weekly iceberg list)
+         - dakshin/figures/*.json                                 (validation outputs)
+         - dakshin/gates.py, dakshin/ice_meshes.py                (gate limits, read with ast, never imported)
 Output: data/  in this repo
 
 Nothing here invents a number. The ice fields are block-averaged copies of the
@@ -137,17 +143,107 @@ for k, t in enumerate(latest["valid"]):
     outlook.append(row)
 
 # ---------------------------------------------------------------- icebergs
-berg_csv = sorted((SRC / "data" / "icebergs").glob("usnic_antarctic_*.csv"))[-1]
-bergs = []
-with open(berg_csv, encoding="utf-8-sig") as fh:
-    for r in csv.DictReader(fh):
-        bergs.append({"name": r["Iceberg"], "len_nm": float(r["Length (NM)"]), "wid_nm": float(r["Width (NM)"]),
-                      "lat": float(r["Latitude"]), "lon": float(r["Longitude"]),
-                      "area_km2": float(r["Area (sqKM)"]), "updated": r["Last Update"]})
+# Latest weekly USNIC issue, parsed like models/iceberg/catalogue.py:load_usnic
+# (utf-8-sig for the BOM, NM -> m, rows with a missing or zero axis dropped).
+NM_M = 1852.0
+missing = []   # layers we could not build, and why: the page shows these, it never invents them
+berg_csvs = sorted((SRC / "data" / "icebergs" / "archive").glob("AntarcticIcebergs_*.csv"))
+bergs, berg_csv = [], (berg_csvs[-1] if berg_csvs else None)
+if berg_csv:
+    from datetime import datetime
+    with open(berg_csv, encoding="utf-8-sig") as fh:
+        for r in csv.DictReader(fh):
+            r = {k.strip(): (v or "").strip() for k, v in r.items()}
+            try:
+                L, W = float(r["Length (NM)"]), float(r["Width (NM)"])
+                la, lo = float(r["Latitude"]), float(r["Longitude"])
+            except ValueError:
+                continue
+            if L <= 0 or W <= 0:
+                continue
+            bergs.append({"name": r["Iceberg"], "len_nm": max(L, W), "wid_nm": min(L, W),
+                          "length_m": max(L, W) * NM_M, "width_m": min(L, W) * NM_M,
+                          "lat": la, "lon": lo, "area_km2": float(r["Area (sqKM)"]),
+                          "observed": datetime.strptime(r["Last Update"], "%m/%d/%Y").date().isoformat()})
+    if not all(-90 <= x["lat"] < 0 for x in bergs):   # same guard as load_usnic
+        raise ValueError(f"{berg_csv.name}: non-southern latitude in the Antarctic feed")
+else:
+    missing.append({"layer": "bergs", "reason": "no data/icebergs/archive/AntarcticIcebergs_*.csv in the source repo"})
 
 # ---------------------------------------------------------------- 2019 validation outputs
-fig = SRC / "isih" / "figures"
+fig = SRC / "dakshin" / "figures"
 J = lambda n: json.loads((fig / n).read_text())
+
+
+def J_opt(n):
+    """A figure that may not exist yet: None, with the reason recorded."""
+    if not (fig / n).exists():
+        missing.append({"layer": n, "reason": f"dakshin/figures/{n} not found in the source repo"})
+        return None
+    return J(n)
+
+
+def with_src(d, src):
+    return None if d is None else {**d, "provenance": src}
+
+
+# Iceberg uncertainty: the measured drift-model error rate from the USNIC
+# hindcast. Circles are centred on the last fix (persistence, which won the
+# hindcast) and grow at this rate per day since the fix.
+berg_hc = J_opt("berg_hindcast.json")
+berg_hc_summary = None if berg_hc is None else {k: v for k, v in berg_hc.items() if k != "segments"} | {
+    "n_segments_listed_in_source": len(berg_hc.get("segments", []))}
+berg_layer = None
+if berg_csv:
+    berg_layer = {"source": f"US National Ice Center Antarctic iceberg list ({berg_csv.name})",
+                  "provenance": f"data/icebergs/archive/{berg_csv.name}",
+                  "issue": berg_csv.stem.split("_")[-1], "items": bergs,
+                  "uncertainty_km_per_day": None if berg_hc is None else berg_hc["uncertainty_radius_km_per_day"],
+                  "uncertainty_provenance": "dakshin/figures/berg_hindcast.json: uncertainty_radius_km_per_day "
+                                            "(median drift-model error over the USNIC hindcast)",
+                  "uncertainty_rule": "radius_km = uncertainty_km_per_day x days between the position fix and the time shown; "
+                                      "no circle for times before the fix"}
+
+# Gate limits and reason strings, read from the Python source with ast (never
+# imported, never executed) so the browser mirror cannot drift from it.
+import ast, re
+def module_constants(path, names):
+    tree = ast.parse(path.read_text())
+    out = {}
+    for node in tree.body:
+        if isinstance(node, ast.Assign):
+            for t in node.targets:
+                if isinstance(t, ast.Name) and t.id in names:
+                    out[t.id] = ast.literal_eval(node.value)
+    return out
+gate_rules = {
+    "provenance": "dakshin/gates.py (MAX_WAVE_M, WAVE_MARGINAL_BAND_M, WIND_*, TRAFFIC_*, MARGINAL_BAND_PCT, "
+                  "CHART_NOT_ENC, BLOCKED_ON) and dakshin/ice_meshes.py (GOLOVNIN.min_depth, max_ice_conc)",
+    **module_constants(SRC / "dakshin" / "gates.py",
+                       {"MAX_WAVE_M", "WAVE_MARGINAL_BAND_M", "WIND_FAIL_MS", "WIND_MARGINAL_MS",
+                        "TRAFFIC_FAIL_NM", "TRAFFIC_MARGINAL_NM", "MARGINAL_BAND_PCT", "MARGINAL_BAND_BASIS",
+                        "CHART_NOT_ENC", "BLOCKED_ON"}),
+}
+_v = module_constants(SRC / "dakshin" / "ice_meshes.py", {"GOLOVNIN"})["GOLOVNIN"]
+gate_rules["vessel"] = {"min_depth_m": _v["min_depth"], "max_ice_conc_pct": _v["max_ice_conc"], "max_wave_m": _v["max_wave"]}
+
+# The prototype's held-out U-Net scores, parsed from the results doc rather
+# than retyped into the page.
+prototype_results = None
+_pr = SRC / "docs" / "PROTOTYPE_RESULTS.md"
+if _pr.exists():
+    rows = []
+    for line in _pr.read_text().splitlines():
+        m = re.match(r"\|\s*(\d+) days?\s*\|(.*)\|\s*$", line)
+        if m:
+            cells = [c.strip().strip("*") for c in m.group(2).split("|")]
+            if len(cells) == 5:
+                rows.append({"lead": int(m.group(1)), "model": float(cells[0]), "persistence": float(cells[1]),
+                             "bg_pixel_bias": float(cells[2]), "raw_glorys12": float(cells[3]),
+                             "gain_vs_persistence": cells[4]})
+    prototype_results = {"provenance": "docs/PROTOTYPE_RESULTS.md (headline table)", "rows": rows} if rows else None
+if prototype_results is None:
+    missing.append({"layer": "prototype_results", "reason": "docs/PROTOTYPE_RESULTS.md missing or its table changed shape"})
 routes = J("routes.json")
 route2019 = routes["paths"]["features"][0]
 coast = J("coastline.json")
@@ -156,19 +252,19 @@ prot = J("protected_areas.json")
 static = {
     "stations": [
         {"name": "Bharati", "lat": -69.40683, "lon": 76.19533, "role": "destination",
-         "note": "Indian station, Larsemann Hills (coordinates from the Antarctic Treaty register via isih/figures/protected_areas.json)"},
+         "note": "Indian station, Larsemann Hills (coordinates from the Antarctic Treaty register via dakshin/figures/protected_areas.json)"},
         {"name": "Bharati approach (100 km N)", "lat": -68.5, "lon": 76.2, "role": "approach"},
         {"name": "Maitri", "lat": -70.7667, "lon": 11.7333, "role": "not-scored",
          "note": "About 100 km inland; the ship-side offload point is not sourced in the repo, so it is shown but never scored."},
     ],
-    "bergs": {"source": f"US National Ice Center Antarctic iceberg list ({berg_csv.name})", "items": bergs},
+    "bergs": berg_layer,
     "coast": {"source": coast["source"], "licence": coast["licence"], "land": coast["land"]},
     "protected": {"source": prot["source"], "transit_finding": prot["transit_finding"],
                   "areas": [{"kind": a["kind"], "number": a["number"], "name": a["name"], "rings": a["rings"]}
                             for a in prot["areas"]]},
     "route2019": {"coords": route2019["geometry"]["coordinates"],
                   "traveltime": route2019["properties"].get("traveltime"),
-                  "source": "PolarRoute + meshiphi run on NOAA/NSIDC CDR ice of 2019-12-01 (isih/figures/routes.json)"},
+                  "source": "PolarRoute + meshiphi run on NOAA/NSIDC CDR ice of 2019-12-01 (dakshin/figures/routes.json)"},
     "mesh2019": [{"cx": c["cx"], "cy": c["cy"], "dcx": c["dcx"], "dcy": c["dcy"], "SIC": c.get("SIC"),
                   "inaccessible": c.get("inaccessible"), "land": c.get("land")} for c in routes["cellboxes"]],
     "window2019": J("destination_window.json"),
@@ -176,6 +272,15 @@ static = {
     "regret2019": J("route_regret.json"),
     "vessels2019": J("vessel_comparison.json"),
     "qa_audit": J("ice_quality_audit.json"),
+    # new real-data products; each is None (and listed in "missing") if its file is absent
+    "hindcast_real": with_src(J_opt("realforecast_hindcast.json"), "dakshin/figures/realforecast_hindcast.json"),
+    "resolution": with_src(J_opt("resolution_study.json"), "dakshin/figures/resolution_study.json"),
+    "berg_hindcast": with_src(berg_hc_summary, "dakshin/figures/berg_hindcast.json"),
+    "berg_resolution": with_src(J_opt("berg_resolution.json"), "dakshin/figures/berg_resolution.json"),
+    "real_route": with_src(J_opt("real_route.json"), "dakshin/figures/real_route.json (scripts/real_route_run.py)"),
+    "prototype_results": prototype_results,
+    "gate_rules": gate_rules,
+    "missing": missing,
 }
 
 meta = {
@@ -190,6 +295,136 @@ meta = {
               "by_lead": skill_summary},
     "season": {"series": season, "outlook": outlook, "outlook_cycle": latest["cycle"], "box": "±0.5° lat, ±1° lon mean"},
 }
+# ---------------------------------------------------------------- weather + depth layers
+# Built for the latest CLEAN ice cycle only: one with exactly 10 daily steps
+# (the 9-step files are stale copies, see data/cmems_forecast_archive/KNOWN_STALE.md).
+# A missing input omits that layer and says why; nothing is filled in.
+(OUT / "weather").mkdir(exist_ok=True)
+clean = [c for c in cycles if c["leads"] == 10]
+layers = {"note": "Display layers for the Bridge. Each block names its source file; absent layers are listed in 'missing'.",
+          "cycle": clean[-1]["cycle"] if clean else None, "waves": None, "wind": None, "depth": None,
+          "missing": missing}
+if not clean:
+    missing.append({"layer": "waves+wind", "reason": "no clean (10-step) ice cycle in the archive"})
+else:
+    cyc = clean[-1]["cycle"]
+    arch = SRC / "data" / "cmems_forecast_archive"
+    wav_f = arch / f"cmems_wav_{cyc}.nc"
+    if wav_f.exists():
+        ds = xr.open_dataset(wav_f)
+        hs = ds.VHM0_dmax.values.astype("f4")              # (10, 277, 961), NaN under ice and on land
+        wtimes = [str(t)[:10] for t in ds.time.values]
+        credit = ds.attrs.get("credit", ""); product = ds.attrs.get("product", "")
+        ds.close()
+        # Block MAX, not mean, on the same 3x3 blocks as the ice grid: the gate
+        # asks for the worst wave, so the downsample must not smooth it away.
+        t, ny, nx = hs.shape; b = SIC_BLOCK
+        blk = hs[:, : ny // b * b, : nx // b * b].reshape(t, ny // b, b, nx // b, b)
+        with np.errstate(invalid="ignore"):
+            hmax = np.nanmax(blk, axis=(2, 4))
+        # decimetres, rounded UP: exact for the gate's > 3.0 / > 2.5 m comparisons, never understates
+        dm = np.where(np.isnan(hmax), 255, np.clip(np.ceil(np.round(hmax * 10, 4)), 0, 254)).astype("u1")
+        ok = ~np.isnan(hmax)   # self-check: decoded value is never below the source and at most 0.1 m above it
+        assert (dm[ok] / 10 >= hmax[ok] - 1e-4).all() and (dm[ok] / 10 - hmax[ok] < 0.1 + 1e-4).all()
+        (OUT / "weather" / f"{cyc}_wav.bin").write_bytes(dm.tobytes())
+        layers["waves"] = {
+            "file": f"weather/{cyc}_wav.bin", "grid": grids["sic"], "leads": t, "valid": wtimes,
+            "encoding": "uint8[leads][ny][nx], decimetres rounded up, 255 = no value (land, or under sea ice where the wave model writes NaN)",
+            "reduction": "3x3 block max of VHM0_dmax (the daily max of 3-hourly significant wave height) onto the 0.25 deg ice grid",
+            "day_max_m": [round(float(np.nanmax(hs[k])), 2) for k in range(t)],
+            "day_max_note": "full-resolution daily max over the box; the source gate uses it as the worst case for open-water cells with no wave value",
+            "clipped_cells": int((hmax > 25.4).sum()),
+            "source": f"{credit}; {product}".strip("; "),
+            "provenance": f"data/cmems_forecast_archive/{wav_f.name}",
+        }
+    else:
+        missing.append({"layer": "waves", "reason": f"data/cmems_forecast_archive/{wav_f.name} not in the source repo"})
+
+    wind_f = SRC / "data" / "ecmwf_wind" / f"ecmwf_wind_{cyc}_00z.nc"
+    if wind_f.exists():
+        ds = xr.open_dataset(wind_f)
+        hrs = (ds.step.values / np.timedelta64(1, "h")).astype(float)
+        lat_w = ds.latitude.values; lon_w = ds.longitude.values
+        # Same time rule as dakshin/real_world.py: day d uses the step nearest d*24+12 h.
+        ks = [int(np.argmin(np.abs(hrs - np.clip(d * 24 + 12, hrs[0], hrs[-1])))) for d in range(10)]
+        u = ds.u10.values[ks].astype("f4"); v = ds.v10.values[ks].astype("f4")
+        valid_w = [str(x)[:16] for x in ds.valid_time.values[ks]]
+        licence = ds.attrs.get("licence", "")
+        ds.close()
+        if lat_w[0] > lat_w[-1]:                       # file is north-to-south; flip to ascending like the other grids
+            lat_w = lat_w[::-1]; u = u[:, ::-1]; v = v[:, ::-1]
+        STRIDE = 2                                     # 0.25 deg -> 0.5 deg
+        u, v = u[:, ::STRIDE, ::STRIDE], v[:, ::STRIDE, ::STRIDE]
+        la, lo = lat_w[::STRIDE], lon_w[::STRIDE]
+        q = lambda x: np.clip(np.round(x / 0.25), -127, 127).astype("i1")
+        (OUT / "weather" / f"{cyc}_wind.bin").write_bytes(q(u).tobytes() + q(v).tobytes())
+        layers["wind"] = {
+            "file": f"weather/{cyc}_wind.bin", "leads": 10, "valid_utc": valid_w, "steps_h": [float(hrs[k]) for k in ks],
+            "grid": {"ny": len(la), "nx": len(lo), "lat0": float(la[0]), "dlat": float(la[1] - la[0]),
+                     "lon0": float(lo[0]), "dlon": float(lo[1] - lo[0])},
+            "encoding": "int8 U[leads][ny][nx] then int8 V[leads][ny][nx], units of 0.25 m/s (eastward, northward 10 m wind)",
+            "reduction": "every 2nd point of the native 0.25 deg IFS grid; one step per forecast day, nearest to 12 UTC (dakshin/real_world.py rule)",
+            "clipped_values": int((np.abs(np.round(np.concatenate([u, v]) / 0.25)) > 127).sum()),
+            "cycle": f"{cyc} 00z", "source": "ECMWF open-data IFS 10 m wind", "licence": licence,
+            "provenance": f"data/ecmwf_wind/{wind_f.name}",
+        }
+    else:
+        missing.append({"layer": "wind", "reason": f"data/ecmwf_wind/{wind_f.name} not in the source repo"})
+
+bathy_f = SRC / "data" / "bathymetry" / "ibcso_v2_corridor_0p05.nc"
+if bathy_f.exists():
+    ds = xr.open_dataset(bathy_f)
+    el, el_mean = ds.elevation.values.astype("f4"), ds.elevation_mean.values.astype("f4")
+    blat, blon = ds.lat.values, ds.lon.values
+    battrs = dict(ds.attrs); ds.close()
+    if blat[0] > blat[-1]:
+        blat = blat[::-1]; el = el[::-1]; el_mean = el_mean[::-1]
+    B = 2
+    ny, nx = el.shape[0] // B, el.shape[1] // B
+    shallow = el[: ny * B, : nx * B].reshape(ny, B, nx, B).max(axis=(1, 3))      # shallowest point in the block
+    mean = el_mean[: ny * B, : nx * B].reshape(ny, B, nx, B).mean(axis=(1, 3))
+    land = mean > 0                                                                 # mostly above sea level (rock or ice surface)
+    enc = np.clip(np.round(shallow), -32767, 32766).astype("<i2")
+    enc[land] = 32767
+    (OUT / "depth.bin").write_bytes(enc.tobytes())
+    g_d = {"ny": ny, "nx": nx, "lat0": float(blat[: ny * B].reshape(ny, B).mean(1)[0]),
+           "dlat": float(blat[1] - blat[0]) * B, "lon0": float(blon[: nx * B].reshape(nx, B).mean(1)[0]),
+           "dlon": float(blon[1] - blon[0]) * B}
+    # Isobaths from the block-MEAN depth (a contour of the shallowest value is
+    # all teeth); land and the shallow mask handle the conservative side.
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+    depth_mean = np.where(land, np.nan, -mean)
+    LEVELS = [200, 1000, 3000]
+    cs = plt.contour(g_d["lon0"] + g_d["dlon"] * np.arange(nx), g_d["lat0"] + g_d["dlat"] * np.arange(ny),
+                     depth_mean, levels=LEVELS)
+    lines = []
+    for lev, segs in zip(LEVELS, cs.allsegs):
+        for seg in segs:
+            if len(seg) < 6:
+                continue
+            pts = np.round(seg[::2] if len(seg) > 40 else seg, 2)            # 0.01 deg, every 2nd vertex on long lines
+            lines.append({"m": lev, "c": pts.tolist()})
+    plt.close("all")
+    min_depth = gate_rules["vessel"]["min_depth_m"]
+    layers["depth"] = {
+        "file": "depth.bin", "grid": g_d,
+        "encoding": "int16 little-endian [ny][nx]: elevation in metres of the SHALLOWEST point in each ~0.11 deg block "
+                    "(negative = below sea level); 32767 = mostly land or ice surface",
+        "reduction": "2x2 block max of 'elevation' (itself the shallowest value per 0.05 deg cell)",
+        "min_depth_m": min_depth, "min_depth_provenance": "dakshin/ice_meshes.py GOLOVNIN['min_depth']",
+        "contours": {"levels_m": LEVELS, "basis": "2x2 block mean of elevation_mean", "lines": lines},
+        "source": battrs.get("title", ""), "citation": battrs.get("references", ""),
+        "licence": battrs.get("license", ""), "caveat": battrs.get("caveat", ""),
+        "provenance": "data/bathymetry/ibcso_v2_corridor_0p05.nc",
+    }
+else:
+    missing.append({"layer": "depth", "reason": "data/bathymetry/ibcso_v2_corridor_0p05.nc not in the source repo"})
+
+layers["bergs"] = berg_layer
+(OUT / "layers.json").write_text(json.dumps(layers, separators=(",", ":")))
+
 (OUT / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))
 (OUT / "static.json").write_text(json.dumps(static, separators=(",", ":")))
 print("cycles", len(cycles), "skill", skill_summary)
