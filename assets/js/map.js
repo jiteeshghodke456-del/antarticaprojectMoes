@@ -74,21 +74,31 @@ export function gridSampler(g, values, colour, landColour = LAND) {
   };
 }
 
-export function drawGraticule(ctx, proj, box) {
-  // Mid-grey lines read on both the light sea and the dark surround; labels carry a dark halo for the same reason.
-  ctx.save(); ctx.strokeStyle = "rgba(110,130,150,0.45)"; ctx.lineWidth = 0.7; ctx.font = "11px 'Atkinson Hyperlegible', sans-serif";
-  const label = (t, x, y) => { ctx.lineWidth = 3; ctx.strokeStyle = "rgba(10,16,26,0.85)"; ctx.strokeText(t, x, y); ctx.fillStyle = "#dbe5ee"; ctx.fillText(t, x, y); ctx.lineWidth = 0.7; ctx.strokeStyle = "rgba(110,130,150,0.45)"; };
-  for (let la = Math.ceil(box.lat0 / 5) * 5; la <= box.lat1; la += 5) {
-    ctx.beginPath();
-    for (let lo = box.lon0; lo <= box.lon1; lo += 1) { const [x, y] = proj.fwd(la, lo); lo === box.lon0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
-    ctx.stroke();
-    const [x, y] = proj.fwd(la, box.lon0); label(`${-la}°S`, x + 4, y - 3);
+// Graticule. Spacing tightens as the view zooms (z) so labels stay useful;
+// each line is labelled where it first enters the visible window, so labels
+// follow the view instead of sitting on box edges that may be off screen.
+export function drawGraticule(ctx, proj, box, { w = Infinity, h = Infinity, z = 1 } = {}) {
+  const dLat = z < 2 ? 5 : z < 4 ? 2 : 1, dLon = z < 2 ? 10 : z < 4 ? 5 : 2;
+  ctx.save(); ctx.font = "11px 'Atkinson Hyperlegible', sans-serif";
+  const line = () => { ctx.lineWidth = 0.7; ctx.strokeStyle = "rgba(110,130,150,0.45)"; };
+  const label = (t, x, y) => { ctx.lineWidth = 3; ctx.strokeStyle = "rgba(10,16,26,0.85)"; ctx.strokeText(t, x, y); ctx.fillStyle = "#dbe5ee"; ctx.fillText(t, x, y); };
+  const inside = (x, y) => x > 6 && x < w - 44 && y > 14 && y < h - 6;
+  const fmt = (v, pos, neg) => `${+Math.abs(v).toFixed(1)}°${v < 0 ? neg : pos}`;
+  for (let la = Math.ceil(box.lat0 / dLat) * dLat; la <= box.lat1; la += dLat) {
+    line(); ctx.beginPath(); let at = null;
+    for (let lo = box.lon0; lo <= box.lon1 + 1e-9; lo += 0.25) {
+      const [x, y] = proj.fwd(la, lo); lo === box.lon0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      if (!at && inside(x, y)) at = [x, y];
+    }
+    ctx.stroke(); if (at) label(fmt(la, "N", "S"), at[0] + 4, at[1] - 3);
   }
-  for (let lo = Math.ceil(box.lon0 / 10) * 10; lo <= box.lon1; lo += 10) {
-    ctx.beginPath();
-    for (let la = box.lat0; la <= box.lat1; la += 0.5) { const [x, y] = proj.fwd(la, lo); la === box.lat0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
-    ctx.stroke();
-    const [x, y] = proj.fwd(box.lat1, lo); label(`${lo}°E`, x - 12, y - 5);
+  for (let lo = Math.ceil(box.lon0 / dLon) * dLon; lo <= box.lon1; lo += dLon) {
+    line(); ctx.beginPath(); let at = null;
+    for (let la = box.lat1; la >= box.lat0 - 1e-9; la -= 0.1) {
+      const [x, y] = proj.fwd(la, lo); la === box.lat1 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      if (!at && inside(x, y)) at = [x, y];
+    }
+    ctx.stroke(); if (at) label(fmt(lo, "E", "W"), at[0] - 12, at[1] + 12);
   }
   ctx.restore();
 }
@@ -139,7 +149,7 @@ export function drawBerg(ctx, proj, b, near) {
   ctx.restore();
 }
 
-export function drawArrows(ctx, proj, g, U, V, lead) {
+export function drawArrows(ctx, proj, g, U, V, lead, z = 1) {
   const n = g.ny * g.nx, off = lead * n;
   ctx.save(); ctx.strokeStyle = "rgba(18,48,77,0.75)"; ctx.lineWidth = 1.1;
   for (let i = 0; i < g.ny; i++) for (let j = 0; j < g.nx; j += 1) {
@@ -149,7 +159,7 @@ export function drawArrows(ctx, proj, g, U, V, lead) {
     const lat = g.lat0 + g.dlat * i, lon = g.lon0 + g.dlon * j;
     const [x0, y0] = proj.fwd(lat, lon);
     // displacement in degrees for a fixed visual length scaled by speed (cm/s)
-    const k = 0.035 * Math.min(sp, 40) / sp;
+    const k = 0.035 * Math.min(sp, 40) / sp / z;   // divided by zoom: arrows keep their screen size
     const [x1, y1] = proj.fwd(lat + v * k, lon + (u * k) / Math.cos(lat * Math.PI / 180));
     ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
     const a = Math.atan2(y1 - y0, x1 - x0);
@@ -243,5 +253,50 @@ export function drawRing(ctx, proj, lat, lon, radiusKm, { stroke = "rgba(18,48,7
     k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
   }
   ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.setLineDash([4, 3]); ctx.strokeStyle = stroke; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.restore();
+}
+
+// Point at distance km along a bearing (degrees clockwise from north), spherical earth.
+export function destination(lat, lon, bearingDeg, km) {
+  const R = 6371, d = km / R, b = bearingDeg * Math.PI / 180, p1 = lat * Math.PI / 180, l1 = lon * Math.PI / 180;
+  const p2 = Math.asin(Math.sin(p1) * Math.cos(d) + Math.cos(p1) * Math.sin(d) * Math.cos(b));
+  const l2 = l1 + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(p1), Math.cos(d) - Math.sin(p1) * Math.sin(p2));
+  return [p2 * 180 / Math.PI, l2 * 180 / Math.PI];
+}
+
+// Forecast drift for one berg: its daily track, then either a drift vector
+// (status ok) or a "held" marker where the model stops it (grounded or
+// unknown). The vector is drawn to map scale: net km/day x days, at least
+// minPx long so its direction stays readable at low zoom.
+export function drawBergDrift(ctx, proj, t, { days, minPx = 12, dayShown = null } = {}) {
+  const pts = t.daily_positions.map((p) => proj.fwd(p.lat, p.lon));
+  ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
+  const path = () => { ctx.beginPath(); pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); };
+  path(); ctx.strokeStyle = "rgba(255,255,255,0.85)"; ctx.lineWidth = 3.2; ctx.stroke();
+  path(); ctx.strokeStyle = "#0b4f6c"; ctx.lineWidth = 1.4; ctx.stroke();
+  const [x0, y0] = pts[0];
+  if (t.status === "ok") {
+    const p0 = t.daily_positions[0];
+    const [la, lo] = destination(p0.lat, p0.lon, t.bearing_deg, t.net_drift_km_per_day * days);
+    let [x1, y1] = proj.fwd(la, lo);
+    const L = Math.hypot(x1 - x0, y1 - y0), a = Math.atan2(y1 - y0, x1 - x0);
+    if (L < minPx) { x1 = x0 + minPx * Math.cos(a); y1 = y0 + minPx * Math.sin(a); }
+    for (const [col, wd] of [["rgba(255,255,255,0.9)", 4.5], ["#0b4f6c", 2.2]]) {
+      ctx.strokeStyle = col; ctx.lineWidth = wd; ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    }
+    ctx.beginPath(); ctx.moveTo(x1 + 2 * Math.cos(a), y1 + 2 * Math.sin(a));
+    ctx.lineTo(x1 - 9 * Math.cos(a - 0.45), y1 - 9 * Math.sin(a - 0.45)); ctx.lineTo(x1 - 9 * Math.cos(a + 0.45), y1 - 9 * Math.sin(a + 0.45)); ctx.closePath();
+    ctx.fillStyle = "#0b4f6c"; ctx.strokeStyle = "rgba(255,255,255,0.9)"; ctx.lineWidth = 1.5; ctx.stroke(); ctx.fill();
+  } else {
+    const [xs, ys] = pts[pts.length - 1];   // where the model stops it
+    ctx.fillStyle = "#ffffff"; ctx.strokeStyle = "#0b4f6c"; ctx.lineWidth = 1.6;
+    ctx.beginPath(); ctx.rect(xs - 5.5, ys - 5.5, 11, 11); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(xs, ys - 3.5); ctx.lineTo(xs, ys + 3); ctx.moveTo(xs - 3, ys + 1); ctx.quadraticCurveTo(xs, ys + 4.5, xs + 3, ys + 1); ctx.moveTo(xs - 2, ys - 2); ctx.lineTo(xs + 2, ys - 2);
+    ctx.lineWidth = 1.2; ctx.stroke();   // anchor glyph
+  }
+  if (dayShown !== null) {
+    const p = t.daily_positions.find((q) => q.day === dayShown);
+    if (p) { const [x, y] = proj.fwd(p.lat, p.lon); ctx.beginPath(); ctx.arc(x, y, 3, 0, Math.PI * 2); ctx.fillStyle = "#0b4f6c"; ctx.strokeStyle = "#fff"; ctx.lineWidth = 1.2; ctx.fill(); ctx.stroke(); }
+  }
   ctx.restore();
 }

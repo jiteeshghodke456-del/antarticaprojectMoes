@@ -442,6 +442,9 @@ else:
     missing.append({"layer": "depth", "reason": "data/bathymetry/ibcso_v2_corridor_0p05.nc not in the source repo"})
 
 layers["bergs"] = berg_layer
+# Forecast drift tracks for the USNIC giants (WDE17 on GLO12 currents), passed
+# through as published; the page draws them as advisory vectors.
+layers["berg_tracks"] = with_src(J_opt("berg_tracks.json"), "dakshin/figures/berg_tracks.json")
 
 # The F1 figure is shown as published; copied, not redrawn.
 import shutil

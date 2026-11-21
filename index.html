@@ -61,7 +61,7 @@
       <label class="row"><input type="checkbox" role="switch" data-layer="wind"><i class="thumb t-wind" aria-hidden="true"></i><span class="txt">Wind at 10 m<small>ECMWF open data</small><span class="hint" id="hint-wind"></span></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="drift"><i class="thumb t-drift" aria-hidden="true"></i><span class="txt">Ice drift<small>CMEMS ice velocity</small></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="depth"><i class="thumb t-depth" aria-hidden="true"></i><span class="txt">Depth<small>Under 20 m, isobaths (IBCSO)</small><span class="hint" id="hint-depth"></span></span></label>
-      <label class="row"><input type="checkbox" role="switch" data-layer="bergs"><i class="thumb t-bergs" aria-hidden="true"></i><span class="txt">Icebergs<small>USNIC, with uncertainty</small><span class="hint" id="hint-bergs"></span></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="bergs"><i class="thumb t-bergs" aria-hidden="true"></i><span class="txt">Icebergs<small>USNIC fixes, drift vectors, uncertainty</small><small class="adv" id="bergadv"></small><span class="hint" id="hint-bergs"></span></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="static"><i class="thumb t-static" aria-hidden="true"></i><span class="txt">Plan on today's ice<small>For comparison</small></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="ref2019"><i class="thumb t-ref" aria-hidden="true"></i><span class="txt">PolarRoute, Dec 2019<small>Reference run</small></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="protected"><i class="thumb t-prot" aria-hidden="true"></i><span class="txt">Protected areas<small>Antarctic Treaty register</small></span></label>
@@ -141,8 +141,16 @@
 </aside>
 
 <div class="mapctl" id="mapctl">
-  <div class="readout" id="readout" aria-live="off">Move over the chart to read the values.</div>
-  <div class="scalenote" id="scalenote"></div>
+  <div class="zoomctl" role="group" aria-label="Zoom">
+    <button class="iconbtn" id="zoomIn" aria-label="Zoom in">+</button>
+    <output id="zoomLvl" aria-label="Zoom level">1.0×</output>
+    <button class="iconbtn" id="zoomOut" aria-label="Zoom out" disabled>−</button>
+    <button class="iconbtn" id="zoomReset" aria-label="Reset view to fit" title="Reset view" disabled>⤢</button>
+  </div>
+  <div class="mapinfo">
+    <div class="readout" id="readout" aria-live="off">Move over the chart to read the values.</div>
+    <div class="scalenote" id="scalenote"></div>
+  </div>
 </div>
 <div class="attribution" id="attribution"></div>
 

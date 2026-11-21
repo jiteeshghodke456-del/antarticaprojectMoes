@@ -1,6 +1,7 @@
 import { Router, VESSEL, STAGES, band, evaluateGates, haversineKm, GATE_ORDER } from "./model.js";
 import { Projection, setupCanvas, paintRaster, gridSampler, wmoColour, WMO, drawGraticule, drawLand, drawLine, drawMarker, drawBerg, drawArrows,
-  waveBins, waveColour, WAVE_ICE, drawVectors, drawShallow, drawIsobaths, drawRing } from "./map.js";
+  waveBins, waveColour, WAVE_ICE, drawVectors, drawShallow, drawIsobaths, drawRing, drawBergDrift } from "./map.js";
+import { createView } from "./view.js";
 
 const $ = (s) => document.querySelector(s);
 const fmtDate = (iso, opt = { weekday: "short", day: "numeric", month: "short" }) =>
@@ -119,13 +120,17 @@ function compute(f) {
 }
 
 // ------------------------------------------------------------------ chart
-let baseKey = "";
+let baseKey = "", baseSize = "", baseB = null, view = null;
 function drawChart(f) {
-  const base = $("#base"), over = $("#overlay");
-  const b = setupCanvas(base); setupCanvas(over);
-  const ins = insets();
+  const base = $("#base"), wrap = $("#chartwrap");
+  base.style.transform = "";
+  const w = wrap.clientWidth, h = wrap.clientHeight, dpr = Math.min(2, devicePixelRatio || 1);
+  // Resize (and so clear) the raster canvas only when its size changes.
+  if (`${w}x${h}@${dpr}` !== baseSize) { baseB = setupCanvas(base); baseSize = `${w}x${h}@${dpr}`; baseKey = ""; }
+  const b = baseB, ins = insets();
   S.proj.fit(BOX, b.w, b.h, 24, ins);
-  const key = [f.cycle.cycle, S.lead, S.field, b.w, b.h, ins.l, ins.r, ins.t, ins.b].join("|");
+  view.setFit(b.w, b.h);
+  const key = [f.cycle.cycle, S.lead, S.field, b.w, b.h, ins.l, ins.r, ins.t, ins.b, view.key()].join("|");
   if (key !== baseKey) {
     const g = S.meta.grids;
     let sampler;
@@ -137,8 +142,8 @@ function drawChart(f) {
       : gridSampler(g.sic, f.sic(S.lead), (v) => wmoColour(v));
     paintRaster(b.ctx, S.proj, b.w, b.h, b.dpr, sampler);
     drawLand(b.ctx, S.proj, S.stat.coast.land, { fill: null, stroke: "rgba(90,70,30,0.8)" });
-    drawGraticule(b.ctx, S.proj, BOX);
-    baseKey = key;
+    drawGraticule(b.ctx, S.proj, BOX, { w: b.w, h: b.h, z: view.z });
+    baseKey = key; view.markPainted();
   }
   drawOverlay(f);
 }
@@ -179,9 +184,11 @@ function drawOverlay(f) {
     drawShallow(ctx, P, S.lay.depth.grid, S.depth, S.lay.depth.min_depth_m);
     drawIsobaths(ctx, P, S.lay.depth.contours.lines, S.lay.depth.contours.levels_m);
   }
-  if (S.layers.drift) drawArrows(ctx, P, S.meta.grids.drift, f.U, f.V, S.lead);
+  const z = view.z;
+  if (S.layers.drift) drawArrows(ctx, P, S.meta.grids.drift, f.U, f.V, S.lead, z);
+  // Wind: denser arrows and shorter shafts as the view zooms, so the screen density stays about the same.
   if (S.layers.wind && f.wx?.U) drawVectors(ctx, P, S.lay.wind.grid, f.wx.U, f.wx.V, Math.min(S.lead, S.lay.wind.leads - 1),
-    { scale: 0.25, stride: 3, lenPerUnit: 0.05, cap: 30, colour: "rgba(90,42,130,0.85)", skip: onLand(f) });
+    { scale: 0.25, stride: Math.max(1, Math.round(3 / z)), lenPerUnit: 0.05 / Math.max(1, Math.min(z, 3)), cap: 30, colour: "rgba(90,42,130,0.85)", skip: onLand(f) });
   if (S.layers.ref2019) {
     const pts = S.stat.route2019.coords.map(([lo, la]) => [la, lo]);
     drawLine(ctx, P, pts, { colour: "#12304d", width: 2, dash: [2, 5], halo: true });
@@ -196,6 +203,8 @@ function drawOverlay(f) {
     const day = f.cycle.valid[S.lead];
     const items = bergsInBox();
     for (const b of items) drawRing(ctx, P, b.lat, b.lon, bergRadiusKm(b, day));
+    const T = tracksHere(f);
+    if (T) for (const t of T.tracks) drawBergDrift(ctx, P, t, { days: trackDays(T), dayShown: S.lead });
     for (const b of items) drawBerg(ctx, P, b, nearTrack(b, day));
   }
   for (const st of S.stat.stations) {
@@ -215,6 +224,34 @@ function shipPosition() {
   const legs = R.forecast.legs;
   for (let k = 1; k < legs.length; k++) if (legs[k].hours >= tHours) return { lat: legs[k].lat, lon: legs[k].lon, label: `Ship, day ${S.lead - S.depart}` };
   const last = legs[legs.length - 1]; return { lat: last.lat, lon: last.lon, label: "Arrived" };
+}
+
+// Drift tracks belong to one forecast cycle; on other cycles they are not drawn.
+const tracksHere = (f) => (S.lay.berg_tracks && f.cycle.cycle === S.lay.berg_tracks.cycle ? S.lay.berg_tracks : null);
+// Vector length = forecast rate x this many days (the horizon of the "ok" tracks).
+const trackDays = (T) => Math.max(...T.tracks.filter((t) => t.status === "ok").map((t) => t.daily_positions.at(-1).day));
+
+// Berg under the cursor (marker or held marker within 12 px), for the inspector.
+function bergAt(x, y) {
+  const T = current && tracksHere(current); let best = null, bd = 12;
+  for (const b of bergsInBox()) {
+    const t = T?.tracks.find((q) => q.berg === b.name);
+    const spots = [[b.lat, b.lon], ...(t && t.status !== "ok" ? [[t.daily_positions.at(-1).lat, t.daily_positions.at(-1).lon]] : [])];
+    for (const [la, lo] of spots) { const [px, py] = S.proj.fwd(la, lo), d = Math.hypot(px - x, py - y); if (d < bd) { bd = d; best = { b, t }; } }
+  }
+  return best;
+}
+function bergInfo({ b, t }) {
+  const day = current.cycle.valid[S.lead], r = bergRadiusKm(b, day);
+  const rows = [`<b class="pos">Iceberg ${b.name}</b>`, `Area <b>${t?.area_km2 ?? b.area_km2} km²</b>, ${b.len_nm}×${b.wid_nm} nm`, `USNIC fix ${fmtDate(b.observed, { day: "numeric", month: "short" })}${r ? `, uncertainty ±${r.toFixed(0)} km` : ""}`];
+  if (!t) rows.push(`<span class="muted">No drift forecast for this berg on this cycle</span>`);
+  else {
+    rows.push(`Drift <b>${t.net_drift_km_per_day} km/day</b>, bearing <b>${t.bearing_deg}°</b> (net ${t.net_drift_km} km)`);
+    rows.push(`Status <b>${t.status}</b>, wind forcing R = ${t.wind_forcing_R}`);
+    if (t.status !== "ok") rows.push(`<b>Model holds this berg (grounded or unknown)</b>`);
+    rows.push(`<span class="muted">Advisory: ${S.lay.berg_tracks.validation.replace(/^see berg_hindcast\.json\s*[—-]\s*/, "")}</span>`);
+  }
+  return rows.join("<br>");
 }
 
 const bergsInBox = () => (S.lay.bergs?.items ?? []).filter((b) => b.lon >= BOX.lon0 && b.lon <= BOX.lon1 && b.lat <= BOX.lat1);
@@ -328,7 +365,12 @@ function renderLegend() {
   if (S.layers.wind && current?.wx?.U) keys.push(`<span><i class="swatch-arrow wind"></i>Wind, ECMWF ${S.lay.wind.valid_utc[Math.min(S.lead, S.lay.wind.leads - 1)].slice(11)} UTC</span>`);
   if (S.layers.drift) keys.push(`<span><i class="swatch-arrow"></i>Ice drift</span>`);
   if (S.layers.depth && S.depth) keys.push(`<span><i class="swatch-hatch"></i>Under ${S.lay.depth.min_depth_m} m (IBCSO, not a chart)</span>`, `<span><i class="swatch-line iso"></i>${S.lay.depth.contours.levels_m.join(", ")} m isobaths</span>`);
-  if (S.layers.bergs && S.lay.bergs) keys.push(`<span>◆ Iceberg</span><span><i class="swatch-ring"></i>Position uncertainty</span>`);
+  if (S.layers.bergs && S.lay.bergs) keys.push(`<span>◆ Iceberg</span><span><i class="swatch-ring"></i>Position uncertainty, +${S.lay.bergs.uncertainty_km_per_day} km per day since the fix</span>`);
+  const T = S.layers.bergs && current && tracksHere(current);
+  if (T) keys.push(`<span><i class="swatch-line track"></i>Forecast track, one vertex per day</span>`,
+    `<span><i class="swatch-vec"></i>Arrow: net drift over ${trackDays(T)} days at the forecast rate (km/day × ${trackDays(T)}), to map scale, drawn at least 12 px long</span>`,
+    `<span><i class="swatch-held"></i>Held: the model stops the berg (grounded or unknown); no arrow</span>`);
+  else if (S.layers.bergs && S.lay.berg_tracks) keys.push(`<span>Drift vectors exist for the ${fmtDate(S.lay.berg_tracks.cycle, { day: "numeric", month: "short" })} forecast only.</span>`);
   if (S.field === "thk") keys.push(`<span>Model thickness hints at the POLARIS stage; it does not observe it.</span>`);
   $("#legend").innerHTML = head + `<div class="keys">${keys.join("")}</div>`;
 }
@@ -447,8 +489,15 @@ async function main() {
   await loadLayers();
   if (!matchMedia(DESKTOP).matches) setPanel("left", false);   // phone: the chart controls start as a closed sheet
   document.querySelectorAll(".collapse").forEach((b) => b.addEventListener("click", () => setPanel(b.dataset.panel, b.getAttribute("aria-expanded") !== "true")));
-  $("#scalenote").textContent = `South polar stereographic, centred on ${S.proj.lon0}°E. Graticule every 5° of latitude and 10° of longitude. No zoom: the chart is drawn to fit.`;
+  $("#scalenote").textContent = `South polar stereographic, centred on ${S.proj.lon0}°E. Scroll or pinch to zoom (1× to 8×), drag to pan, double-click to zoom in; keys + − 0. The graticule tightens as you zoom.`;
   renderFinding(); renderCredits();
+  $("#bergadv").textContent = S.lay.berg_tracks ? `Advisory: ${S.lay.berg_tracks.validation.replace(/^see berg_hindcast\.json\s*[—-]\s*/, "")}.` : "";
+  view = createView({
+    proj: S.proj, surface: $("#overlay"), base: $("#base"),
+    onFrame: () => current && drawOverlay(current),          // vectors redraw every frame during a gesture
+    onSettle: () => current && drawChart(current),           // the raster repaints once the gesture stops
+    onChange: (z) => { $("#zoomLvl").textContent = `${z.toFixed(1)}×`; $("#zoomOut").disabled = z <= 1; $("#zoomIn").disabled = z >= 8; $("#zoomReset").disabled = z <= 1; },
+  });
   const cycles = S.meta.cycles;
   S.cycle = cycles[cycles.length - 1];
   $("#vesselname").textContent = `${VESSEL.name}, IMO ${VESSEL.imo}`;
@@ -465,6 +514,9 @@ async function main() {
     if (e.target.matches("input, select")) return;
     if (e.key === "ArrowRight" && S.lead < current.leads - 1) { S.lead++; refresh({ recompute: false }); }
     if (e.key === "ArrowLeft" && S.lead > 0) { S.lead--; refresh({ recompute: false }); }
+    if (e.key === "+" || e.key === "=") view.zoomCentre(1.6);
+    if (e.key === "-") view.zoomCentre(1 / 1.6);
+    if (e.key === "0") view.reset();
   });
   $("#depart").addEventListener("change", (e) => { S.depart = +e.target.value; refresh(); });
   $("#limit").addEventListener("input", (e) => { $("#limitval").textContent = e.target.value + "%"; });
@@ -493,6 +545,8 @@ async function main() {
     const dn = g.drift.ny * g.drift.nx;
     const u = cell(g.drift, f.U.subarray(S.lead * dn, (S.lead + 1) * dn)), v = cell(g.drift, f.V.subarray(S.lead * dn, (S.lead + 1) * dn));
     const pos = `<b class="pos">${(-lat).toFixed(2)}°S ${lon.toFixed(2)}°E</b>`;
+    const hit = S.layers.bergs && S.lay.bergs ? bergAt(e.clientX - r.left, e.clientY - r.top) : null;
+    if (hit) { $("#readout").innerHTML = `${pos}<br>${bergInfo(hit)}`; return; }
     let txt;
     if (sic === null) txt = `${pos}<br><span class="muted">Outside the forecast box</span>`;
     else if (sic === 255) txt = `${pos}<br>Land or ice shelf`;
@@ -521,6 +575,9 @@ async function main() {
     refresh();
   });
   let t; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { baseKey = ""; drawChart(current); }, 150); });
+  $("#zoomIn").addEventListener("click", () => view.zoomCentre(1.6));
+  $("#zoomOut").addEventListener("click", () => view.zoomCentre(1 / 1.6));
+  $("#zoomReset").addEventListener("click", () => view.reset());
   await refresh();
 }
 main().catch((e) => {

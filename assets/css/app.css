@@ -241,6 +241,10 @@ body.viewer { height: 100vh; overflow: hidden; background: #111a27; }
 .swatch-line.dash { border-top: 3px dashed #dbe5ee; box-shadow: none; }
 .swatch-line.ref { border-top: 2px dotted #dbe5ee; box-shadow: none; }
 .swatch-line.iso { border-top: 1.5px solid #9fb3c6; box-shadow: none; }
+.swatch-line.track { border-top: 1.5px solid #0b4f6c; box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.85); }
+.swatch-vec { display: inline-block; width: 22px; height: 10px; vertical-align: middle; margin-right: 6px;
+  background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 22 10'%3E%3Cpath d='M1 5h14' stroke='%23fff' stroke-width='4'/%3E%3Cpath d='M1 5h14' stroke='%230b4f6c' stroke-width='2'/%3E%3Cpath d='M21 5 13 1v8z' fill='%230b4f6c' stroke='%23fff'/%3E%3C/svg%3E") center/contain no-repeat; }
+.swatch-held { display: inline-block; width: 11px; height: 11px; vertical-align: middle; margin-right: 6px; background: #fff; border: 1.6px solid #0b4f6c; }
 .swatch-hatch { display: inline-block; width: 14px; height: 10px; vertical-align: middle; margin-right: 6px; border: 1px solid #c8b08c; background: repeating-linear-gradient(135deg, #c8b08c 0 1.5px, transparent 1.5px 4px); }
 .swatch-ring { display: inline-block; width: 12px; height: 12px; border-radius: 50%; vertical-align: middle; margin-right: 6px; border: 1.5px dashed #dbe5ee; }
 .swatch-arrow { display: inline-block; width: 18px; height: 0; border-top: 1.5px solid #dbe5ee; vertical-align: middle; margin-right: 6px; }
@@ -273,15 +277,23 @@ body.viewer { height: 100vh; overflow: hidden; background: #111a27; }
 }
 
 /* bottom-right map control: cursor readout and the scale note */
-.mapctl { right: 416px; bottom: 12px; width: 270px; padding: 8px 10px; font-size: var(--t-xs); }
+.mapctl { right: 416px; bottom: 12px; width: 318px; padding: 8px 10px; font-size: var(--t-xs); display: flex; gap: 10px; align-items: flex-start; }
+.mapinfo { min-width: 0; flex: 1; }
+.zoomctl { display: flex; flex-direction: column; gap: 4px; align-items: center; flex: none; }
+.zoomctl .iconbtn { font-size: 17px; line-height: 1; width: 34px; height: 34px; }
+.zoomctl output { font-size: 11px; color: var(--ink-2); }
+.map canvas.overlay { touch-action: none; }
+.map canvas.overlay.grabbing { cursor: grabbing; }
+.txt .adv { color: #c9b98a; }
+.row:has(input:checked) .txt .adv { color: #e3d6a8; }
 body.right-closed .mapctl { right: 12px; }
 .mapctl .readout { color: var(--ink); line-height: 1.45; }
 .mapctl .readout .pos { font-size: var(--t-sm); color: var(--accent-ink); }
 .mapctl .scalenote { color: var(--ink-2); border-top: 1px solid var(--line-soft); margin-top: 6px; padding-top: 6px; }
 
 /* bottom-left attribution, Leaflet-style */
-.attribution { left: 364px; bottom: 12px; right: 698px; padding: 4px 8px; font-size: 11.5px; line-height: 1.4; color: var(--ink-2); border-radius: var(--r-sm); }
-body.right-closed .attribution { right: 294px; }
+.attribution { left: 364px; bottom: 12px; right: 746px; padding: 4px 8px; font-size: 11.5px; line-height: 1.4; color: var(--ink-2); border-radius: var(--r-sm); }
+body.right-closed .attribution { right: 342px; }
 body.left-closed .attribution { left: 12px; }
 
 /* ---------- decision panel ---------- */
@@ -399,7 +411,9 @@ svg.chart text { font-family: var(--font-ui); font-size: 12px; fill: var(--ink-2
   .brandbar { width: auto; border-radius: 0; border-width: 0 0 1px; padding: 10px 16px 0; background: var(--panel-solid); }
   .ribbon { border-radius: 0; border-width: 0; padding: 10px 16px; grid-template-columns: minmax(0, 1fr); }
   .map { position: relative; height: min(70vh, 85vw); min-height: 300px; }
-  .mapctl { display: none; }
+  .mapctl { order: 3; width: auto; border-radius: 0; border-width: 0 0 1px; padding: 6px 16px; background: var(--panel-solid); }
+  .mapctl .mapinfo .readout { display: none; }
+  .zoomctl { flex-direction: row; }
   .attribution { border-radius: 0; border-width: 1px 0 0; white-space: normal; padding: 6px 16px; }
   /* chart controls: a sheet pinned to the bottom edge */
   .panel.left { position: fixed; left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 72vh; border-radius: 14px 14px 0 0; z-index: 20; box-shadow: 0 -6px 24px rgba(0, 0, 0, 0.45); background: var(--panel-solid); }
