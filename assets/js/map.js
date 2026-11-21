@@ -11,7 +11,7 @@ export const WMO = [
   { max: 101, rgb: [255, 0, 0], label: "9–10/10" },
 ];
 const LAND = [231, 220, 184];
-const OUTSIDE = [236, 241, 244];
+const OUTSIDE = [17, 26, 39];   // outside the forecast box: the dark viewer canvas
 export function wmoColour(pct) { for (const c of WMO) if (pct < c.max) return c.rgb; return WMO[WMO.length - 1].rgb; }
 
 export class Projection {
@@ -27,16 +27,18 @@ export class Projection {
     const r = Math.hypot(X, Y);
     return [2 * Math.atan(r) * 180 / Math.PI - 90, this.lon0 + Math.atan2(X, Y) * 180 / Math.PI];
   }
-  fit(box, w, h, pad = 24) {
+  // inset: screen space taken by floating panels ({l, r, t, b} in px); the fan is fitted into what is left.
+  fit(box, w, h, pad = 24, inset = { l: 0, r: 0, t: 0, b: 0 }) {
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (let la = box.lat0; la <= box.lat1 + 1e-9; la += (box.lat1 - box.lat0) / 20)
       for (let lo = box.lon0; lo <= box.lon1 + 1e-9; lo += (box.lon1 - box.lon0) / 20) {
         const [X, Y] = this.raw(la, lo);
         x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y);
       }
-    this.s = Math.min((w - 2 * pad) / (x1 - x0), (h - 2 * pad) / (y1 - y0));
-    this.cx = w / 2 - this.s * (x0 + x1) / 2;
-    this.cy = h / 2 + this.s * (y0 + y1) / 2;
+    const W = w - inset.l - inset.r, H = h - inset.t - inset.b;
+    this.s = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (y1 - y0));
+    this.cx = inset.l + W / 2 - this.s * (x0 + x1) / 2;
+    this.cy = inset.t + H / 2 + this.s * (y0 + y1) / 2;
   }
 }
 
@@ -73,18 +75,20 @@ export function gridSampler(g, values, colour, landColour = LAND) {
 }
 
 export function drawGraticule(ctx, proj, box) {
-  ctx.save(); ctx.strokeStyle = "rgba(18,48,77,0.22)"; ctx.lineWidth = 0.7; ctx.fillStyle = "rgba(18,48,77,0.6)"; ctx.font = "11px 'Atkinson Hyperlegible', sans-serif";
+  // Mid-grey lines read on both the light sea and the dark surround; labels carry a dark halo for the same reason.
+  ctx.save(); ctx.strokeStyle = "rgba(110,130,150,0.45)"; ctx.lineWidth = 0.7; ctx.font = "11px 'Atkinson Hyperlegible', sans-serif";
+  const label = (t, x, y) => { ctx.lineWidth = 3; ctx.strokeStyle = "rgba(10,16,26,0.85)"; ctx.strokeText(t, x, y); ctx.fillStyle = "#dbe5ee"; ctx.fillText(t, x, y); ctx.lineWidth = 0.7; ctx.strokeStyle = "rgba(110,130,150,0.45)"; };
   for (let la = Math.ceil(box.lat0 / 5) * 5; la <= box.lat1; la += 5) {
     ctx.beginPath();
     for (let lo = box.lon0; lo <= box.lon1; lo += 1) { const [x, y] = proj.fwd(la, lo); lo === box.lon0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
     ctx.stroke();
-    const [x, y] = proj.fwd(la, box.lon0); ctx.fillText(`${-la}°S`, x + 4, y - 3);
+    const [x, y] = proj.fwd(la, box.lon0); label(`${-la}°S`, x + 4, y - 3);
   }
   for (let lo = Math.ceil(box.lon0 / 10) * 10; lo <= box.lon1; lo += 10) {
     ctx.beginPath();
     for (let la = box.lat0; la <= box.lat1; la += 0.5) { const [x, y] = proj.fwd(la, lo); la === box.lat0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); }
     ctx.stroke();
-    const [x, y] = proj.fwd(box.lat1, lo); ctx.fillText(`${lo}°E`, x - 12, y - 5);
+    const [x, y] = proj.fwd(box.lat1, lo); label(`${lo}°E`, x - 12, y - 5);
   }
   ctx.restore();
 }

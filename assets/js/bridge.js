@@ -123,8 +123,9 @@ let baseKey = "";
 function drawChart(f) {
   const base = $("#base"), over = $("#overlay");
   const b = setupCanvas(base); setupCanvas(over);
-  S.proj.fit(BOX, b.w, b.h, 30);
-  const key = [f.cycle.cycle, S.lead, S.field, b.w, b.h].join("|");
+  const ins = insets();
+  S.proj.fit(BOX, b.w, b.h, 24, ins);
+  const key = [f.cycle.cycle, S.lead, S.field, b.w, b.h, ins.l, ins.r, ins.t, ins.b].join("|");
   if (key !== baseKey) {
     const g = S.meta.grids;
     let sampler;
@@ -147,6 +148,20 @@ const onLand = (f) => { const g = S.meta.grids.sic, I = f.sic(0); return (lat, l
   const i = Math.round((lat - g.lat0) / g.dlat), j = Math.round((lon - g.lon0) / g.dlon);
   return i >= 0 && j >= 0 && i < g.ny && j < g.nx && I[i * g.nx + j] === 255; }; };
 const waveBinsNow = () => waveBins(S.rules.MAX_WAVE_M, S.rules.WAVE_MARGINAL_BAND_M);
+
+// The chart fills the window; on desktop the panels float over it, so fit the
+// fan into the space they leave free. On phone layouts the map stands alone.
+const DESKTOP = "(min-width: 981px)";
+function insets() {
+  const z = { l: 0, r: 0, t: 0, b: 0 };
+  if (!matchMedia(DESKTOP).matches) return z;
+  const W = innerWidth, gap = 12;
+  const L = $("#leftpanel").getBoundingClientRect(), Rr = $("#rightpanel").getBoundingClientRect();
+  const top = Math.max($(".brandbar").getBoundingClientRect().bottom, $("#finding").hidden ? 0 : $("#finding").getBoundingClientRect().bottom);
+  z.l = Math.round(L.right + gap); z.r = Math.round(W - Rr.left + gap); z.t = Math.round(top + gap); z.b = 36;
+  if (W - z.l - z.r < 320) { z.l = 0; z.r = 0; }   // too narrow to dodge both: let the panels overlap
+  return z;
+}
 
 function thkColour(dm) {
   if (dm < 1) return [219, 232, 242];
@@ -283,15 +298,15 @@ function renderSpark() {
   const svg = $("#spark"); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const yl = y(S.limit);
   svg.innerHTML = `
-    ${[0, 50, 100].map((v) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" stroke="#e1e7eb"/><text x="${pad.l - 4}" y="${y(v) + 4}" text-anchor="end" font-size="10" fill="#4f6476">${v}%</text>`).join("")}
-    <line x1="${pad.l}" x2="${W - pad.r}" y1="${yl}" y2="${yl}" stroke="#b3261e" stroke-dasharray="4 3"/>
-    <text x="${W - pad.r}" y="${yl - 4}" text-anchor="end" font-size="10" fill="#b3261e">${S.limit}% limit</text>
-    <path d="${line(obs)}" fill="none" stroke="#12304d" stroke-width="1.6"/>
-    <path d="${line(fc)}" fill="none" stroke="#a3156f" stroke-width="2" stroke-dasharray="5 3"/>
-    <text x="${pad.l}" y="${H - 4}" font-size="10" fill="#4f6476">${fmtDate(pts[0].d, { day: "numeric", month: "short" })}</text>
-    <text x="${W - pad.r}" y="${H - 4}" text-anchor="end" font-size="10" fill="#4f6476">${fmtDate(pts[pts.length - 1].d, { day: "numeric", month: "short" })}</text>`;
+    ${[0, 50, 100].map((v) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--rule)"/><text x="${pad.l - 4}" y="${y(v) + 4}" text-anchor="end" font-size="10" style="fill:var(--ink-2)">${v}%</text>`).join("")}
+    <line x1="${pad.l}" x2="${W - pad.r}" y1="${yl}" y2="${yl}" style="stroke:var(--fail)" stroke-dasharray="4 3"/>
+    <text x="${W - pad.r}" y="${yl - 4}" text-anchor="end" font-size="10" style="fill:var(--fail)">${S.limit}% limit</text>
+    <path d="${line(obs)}" fill="none" style="stroke:var(--ink)" stroke-width="1.6"/>
+    <path d="${line(fc)}" fill="none" style="stroke:var(--route)" stroke-width="2" stroke-dasharray="5 3"/>
+    <text x="${pad.l}" y="${H - 4}" font-size="10" style="fill:var(--ink-2)">${fmtDate(pts[0].d, { day: "numeric", month: "short" })}</text>
+    <text x="${W - pad.r}" y="${H - 4}" text-anchor="end" font-size="10" style="fill:var(--ink-2)">${fmtDate(pts[pts.length - 1].d, { day: "numeric", month: "short" })}</text>`;
   const lastObs = obs[obs.length - 1], lastFc = fc[fc.length - 1];
-  $("#sparknote").textContent = `Mean concentration in a box around the approach point. Navy: each day's CMEMS analysis since ${fmtDate(pts[0].d, { day: "numeric", month: "short" })}. Magenta: the ${s.outlook_cycle} forecast, ${lastObs.v}% today falling to ${lastFc.v}% by ${fmtDate(lastFc.d, { day: "numeric", month: "short" })}.`;
+  $("#sparknote").textContent = `Mean concentration in a box around the approach point. Solid line: each day's CMEMS analysis since ${fmtDate(pts[0].d, { day: "numeric", month: "short" })}. Dashed: the ${s.outlook_cycle} forecast, ${lastObs.v}% today falling to ${lastFc.v}% by ${fmtDate(lastFc.d, { day: "numeric", month: "short" })}.`;
 }
 
 function renderLegend() {
@@ -339,12 +354,12 @@ function renderFinding() {
   const el = $("#finding"), R = S.stat.real_route;
   el.hidden = false;
   if (!R) {
-    el.className = "finding neutral";
+    el.className = "ribbon neutral";
     el.innerHTML = `<div class="verdict">No route finding</div><p>${S.stat.missing.find((m) => m.layer === "real_route.json")?.reason ?? "real_route.json was not built"}.</p>`;
     return;
   }
   const closed = R.approach_closed_at_ice_limit, g = R.weather_gate, d = (x) => fmtDate(x, { day: "numeric", month: "long", year: "numeric" });
-  el.className = "finding" + (closed || g.state === "FAIL" ? "" : " neutral");
+  el.className = "ribbon" + (closed || g.state === "FAIL" ? "" : " neutral");
   const gs = g.state === "FAIL" ? "INVALID" : g.state === "MARGINAL" ? "DEGRADED" : "VALID";
   el.innerHTML = `
     <div class="verdict">${closed ? "Approach closed" : "Approach open"}<small>${d(R.cycle)} forecast</small></div>
@@ -364,6 +379,15 @@ function renderFinding() {
     <details class="src"><summary>Source and limits</summary>${R.provenance}. Weather gate: ${g.reason}. ${R.segment_note[0].toUpperCase() + R.segment_note.slice(1)}. The browser route below has its own start and grid, so its numbers differ.</details>`;
 }
 
+function setPanel(side, open) {
+  const btn = document.querySelector(`.collapse[data-panel="${side}"]`);
+  btn.setAttribute("aria-expanded", String(open));
+  btn.querySelector(".visually-hidden").textContent = `${open ? "Collapse" : "Expand"} ${side === "left" ? "chart controls" : "decision support"}`;
+  $(`#${side}body`).hidden = !open;
+  document.body.classList.toggle(`${side}-closed`, !open);
+  if (current) { baseKey = ""; drawChart(current); }
+}
+
 function renderCredits() {
   const L = S.lay, st = S.stat, parts = [
     `Ice: ${S.meta.source}.`,
@@ -373,14 +397,20 @@ function renderCredits() {
     L.bergs && `Icebergs: ${L.bergs.source}.`,
     `Coast: ${st.coast.source} (${st.coast.licence}). Protected areas: ${st.protected.source}.`,
   ].filter(Boolean);
-  $("#credits").innerHTML = `<h2>Data and credits</h2>${parts.map((t) => `<p>${t}</p>`).join("")}
+  const short = [S.lay.waves?.source.split(";")[0] || S.meta.source.split(",")[0], "NOAA/NSIDC",
+    L.wind && L.wind.licence.split(", http")[0],
+    L.depth && (() => { const m = L.depth.citation.match(/(Dorschel, B\.)[^(]*\((\d{4})\)/); return `IBCSO v2${m ? `, Dorschel et al. ${m[2]}` : ""} (${L.depth.licence.match(/CC-BY-[\d.]+/)?.[0] ?? "see credits"})`; })(),
+    L.bergs && "US National Ice Center", "Natural Earth"].filter(Boolean);
+  $("#attribution").innerHTML = short.join(" | ") + ` | <a href="#credits">Full credits</a>`;
+  $("#credits").innerHTML = `<h3>Data and credits</h3>${parts.map((t) => `<p>${t}</p>`).join("")}
     <p>Routing, POLARIS and the gates run in your browser, ported from the project's Python. Nothing on this page is simulated. Advisory only: not for navigation.</p>`;
 }
 
 function renderTimeline(f) {
   const c = f.cycle;
-  $("#leads").innerHTML = c.valid.map((d, k) => `<button data-lead="${k}" aria-pressed="${k === S.lead}" class="${k === 0 ? "analysis" : ""}"><b>${k === 0 ? "D+0" : "D+" + k}</b>${fmtDate(d)}</button>`).join("");
-  $("#validtime").innerHTML = `<b>${fmtDate(c.valid[S.lead], { weekday: "long", day: "numeric", month: "long", year: "numeric" })}</b>${S.lead === 0 ? "Analysis (best estimate for the issue day)" : `Forecast, ${S.lead} day${S.lead > 1 ? "s" : ""} ahead`}`;
+  $("#leadLabel").textContent = fmtDate(c.valid[S.lead], { weekday: "short", day: "numeric", month: "short", year: "numeric" });
+  $("#leadSub").textContent = `D+${S.lead} of ${c.leads - 1}. ` + (S.lead === 0 ? "Analysis, the best estimate for the issue day." : `Forecast, ${S.lead} day${S.lead > 1 ? "s" : ""} ahead.`);
+  $("#leadPrev").disabled = S.lead === 0; $("#leadNext").disabled = S.lead >= c.leads - 1;
   $("#depart").innerHTML = c.valid.slice(0, Math.min(5, c.leads)).map((d, k) => `<option value="${k}" ${k === S.depart ? "selected" : ""}>${k === 0 ? "Now" : "In " + k + " day" + (k > 1 ? "s" : "")} (${fmtDate(d)})</option>`).join("");
 }
 
@@ -415,7 +445,9 @@ async function main() {
   $("#limit").value = S.limit; $("#limitval").textContent = S.limit + "%";
   $("#limitnote").textContent = `The ${S.limit}% default is the source project's working stand-in (dakshin/ice_meshes.py). No ice class is defined by concentration, so treat it as a setting, not a certificate.`;
   await loadLayers();
-  if (matchMedia("(max-width: 640px)").matches) $("#layerpanel").open = false;
+  if (!matchMedia(DESKTOP).matches) setPanel("left", false);   // phone: the chart controls start as a closed sheet
+  document.querySelectorAll(".collapse").forEach((b) => b.addEventListener("click", () => setPanel(b.dataset.panel, b.getAttribute("aria-expanded") !== "true")));
+  $("#scalenote").textContent = `South polar stereographic, centred on ${S.proj.lon0}°E. Graticule every 5° of latitude and 10° of longitude. No zoom: the chart is drawn to fit.`;
   renderFinding(); renderCredits();
   const cycles = S.meta.cycles;
   S.cycle = cycles[cycles.length - 1];
@@ -427,7 +459,8 @@ async function main() {
   $("#cycle").addEventListener("change", (e) => setCycle(e.target.value));
   $("#cyclePrev").addEventListener("click", () => { const i = cycles.indexOf(S.cycle); if (i > 0) setCycle(cycles[i - 1].cycle); });
   $("#cycleNext").addEventListener("click", () => { const i = cycles.indexOf(S.cycle); if (i < cycles.length - 1) setCycle(cycles[i + 1].cycle); });
-  $("#leads").addEventListener("click", (e) => { const b = e.target.closest("button"); if (!b) return; S.lead = +b.dataset.lead; refresh({ recompute: false }); });
+  $("#leadPrev").addEventListener("click", () => { if (S.lead > 0) { S.lead--; refresh({ recompute: false }); } });
+  $("#leadNext").addEventListener("click", () => { if (S.lead < current.leads - 1) { S.lead++; refresh({ recompute: false }); } });
   document.addEventListener("keydown", (e) => {
     if (e.target.matches("input, select")) return;
     if (e.key === "ArrowRight" && S.lead < current.leads - 1) { S.lead++; refresh({ recompute: false }); }
@@ -459,7 +492,7 @@ async function main() {
     const thk = cell(g.thk, f.thk(S.lead));
     const dn = g.drift.ny * g.drift.nx;
     const u = cell(g.drift, f.U.subarray(S.lead * dn, (S.lead + 1) * dn)), v = cell(g.drift, f.V.subarray(S.lead * dn, (S.lead + 1) * dn));
-    const pos = `${(-lat).toFixed(2)}°S ${lon.toFixed(2)}°E`;
+    const pos = `<b class="pos">${(-lat).toFixed(2)}°S ${lon.toFixed(2)}°E</b>`;
     let txt;
     if (sic === null) txt = `${pos}<br><span class="muted">Outside the forecast box</span>`;
     else if (sic === 255) txt = `${pos}<br>Land or ice shelf`;
@@ -491,7 +524,7 @@ async function main() {
   await refresh();
 }
 main().catch((e) => {
-  const el = $("#finding"); el.hidden = false; el.className = "finding";
+  const el = $("#finding"); el.hidden = false; el.className = "ribbon";
   el.innerHTML = `<div class="verdict">Data did not load</div><p>${e.message}. Serve the folder over HTTP (python -m http.server) rather than opening the file directly.</p>`;
   console.error(e);
 });

@@ -8,13 +8,19 @@
 <link rel="stylesheet" href="assets/css/app.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%2312304d'/%3E%3Cpath d='M8 14 L4 3 L8 5.5 L12 3 Z' fill='%23fff'/%3E%3C/svg%3E">
 </head>
-<body class="bridgepage">
-<header class="top">
+<body class="viewer">
+<a class="skip" href="#leftpanel">Skip to chart controls</a>
+<div class="map" id="chartwrap">
+  <canvas id="base" aria-hidden="true"></canvas>
+  <canvas id="overlay" class="overlay" role="img" aria-label="Chart of the forecast field with the planned route"></canvas>
+</div>
+
+<header class="brandbar">
   <a class="brand" href="index.html">
-    <svg width="26" height="26" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="12" fill="none" stroke="#b9c8d4" stroke-width="1.2"/><path d="M13 22.5 L8.2 7.5 L13 10.6 L17.8 7.5 Z" fill="#f3f6f8"/></svg>
-    <span><span class="brand-name">Dakshin</span><span class="brand-sub">Advisory ice-navigation aid for the Antarctic resupply run</span></span>
+    <svg width="28" height="28" viewBox="0 0 26 26" aria-hidden="true"><circle cx="13" cy="13" r="12" fill="none" stroke="#2fb3d6" stroke-width="1.4"/><path d="M13 22.5 L8.2 7.5 L13 10.6 L17.8 7.5 Z" fill="#e6edf3"/></svg>
+    <span><span class="brand-name">Dakshin</span><span class="brand-sub">Advisory ice-navigation aid, Antarctic resupply</span></span>
   </a>
-  <nav aria-label="Pages">
+  <nav class="tabs" aria-label="Pages">
     <a href="index.html" aria-current="page">Bridge</a>
     <a href="pipeline.html">How it works</a>
     <a href="evidence.html">Evidence</a>
@@ -22,51 +28,59 @@
   </nav>
 </header>
 
-<div class="timeline" aria-label="Forecast time">
-  <div class="cycle">
-    <label for="cycle">Forecast issued</label>
-    <button class="iconbtn" id="cyclePrev" aria-label="Earlier forecast">‹</button>
-    <select id="cycle"></select>
-    <button class="iconbtn" id="cycleNext" aria-label="Later forecast">›</button>
+<section class="ribbon" id="finding" aria-label="Route finding on the latest forecast" hidden></section>
+
+<aside class="panel left" id="leftpanel" aria-label="Chart controls">
+  <div class="panel-head">
+    <h2>Chart</h2>
+    <button class="collapse" aria-expanded="true" aria-controls="leftbody" data-panel="left"><span class="visually-hidden">Collapse chart controls</span></button>
   </div>
-  <div class="leads" id="leads" role="group" aria-label="Forecast day shown on the chart"></div>
-  <div class="validtime" id="validtime"></div>
-</div>
-
-<section class="finding" id="finding" aria-label="Route finding on the latest forecast" hidden></section>
-
-<main class="bridge">
-  <div class="chartwrap" id="chartwrap">
-    <div class="canvasbox">
-      <canvas id="base" aria-hidden="true"></canvas>
-      <canvas id="overlay" class="overlay" role="img" aria-label="Chart of the forecast field with the planned route"></canvas>
+  <div class="panel-body" id="leftbody">
+    <div class="stepper">
+      <label for="cycle">Issued</label>
+      <button class="iconbtn" id="cyclePrev" aria-label="Earlier forecast">◀</button>
+      <select id="cycle"></select>
+      <button class="iconbtn" id="cycleNext" aria-label="Later forecast">▶</button>
     </div>
-    <div class="readout float" id="readout">Move over the chart to read the values.</div>
-    <details class="layerpanel float" id="layerpanel" open>
-      <summary>Layers</summary>
-      <fieldset>
-        <legend>Chart field</legend>
-        <label class="opt"><input type="radio" name="field" value="sic" checked><span>Ice concentration</span></label>
-        <label class="opt"><input type="radio" name="field" value="thk"><span>Ice thickness</span></label>
-        <label class="opt"><input type="radio" name="field" value="wav"><span>Wave height, daily max</span><span class="hint" id="hint-wav"></span></label>
-      </fieldset>
-      <fieldset>
-        <legend>Overlays</legend>
-        <label class="opt"><input type="checkbox" role="switch" data-layer="wind"><span>Wind at 10 m</span><span class="hint" id="hint-wind"></span></label>
-        <label class="opt"><input type="checkbox" role="switch" data-layer="drift"><span>Ice drift</span></label>
-        <label class="opt"><input type="checkbox" role="switch" data-layer="depth"><span>Depth: under 20 m and isobaths</span><span class="hint" id="hint-depth"></span></label>
-        <label class="opt"><input type="checkbox" role="switch" data-layer="bergs"><span>Icebergs with uncertainty</span><span class="hint" id="hint-bergs"></span></label>
-        <label class="opt"><input type="checkbox" role="switch" data-layer="static"><span>Plan on today's ice</span></label>
-        <label class="opt"><input type="checkbox" role="switch" data-layer="ref2019"><span>PolarRoute run, Dec 2019</span></label>
-        <label class="opt"><input type="checkbox" role="switch" data-layer="protected"><span>Protected areas (ATS)</span></label>
-      </fieldset>
-    </details>
-    <div class="legend float" id="legend"></div>
-  </div>
+    <div class="stepper">
+      <span class="lbl" id="leadLbl">Date</span>
+      <button class="iconbtn" id="leadPrev" aria-label="Previous forecast day">◀</button>
+      <output id="leadLabel" aria-labelledby="leadLbl" aria-live="polite"></output>
+      <button class="iconbtn" id="leadNext" aria-label="Next forecast day">▶</button>
+    </div>
+    <p class="leadsub" id="leadSub"></p>
 
-  <aside class="rail" aria-label="Decision support">
+    <fieldset class="rows">
+      <legend>Chart field</legend>
+      <label class="row"><input type="radio" name="field" value="sic" checked><i class="thumb t-sic" aria-hidden="true"></i><span class="txt">Ice concentration<small>CMEMS, WMO colour code</small></span></label>
+      <label class="row"><input type="radio" name="field" value="thk"><i class="thumb t-thk" aria-hidden="true"></i><span class="txt">Ice thickness<small>CMEMS model thickness</small></span></label>
+      <label class="row"><input type="radio" name="field" value="wav"><i class="thumb t-wav" aria-hidden="true"></i><span class="txt">Wave height<small>Daily max, CMEMS waves</small><span class="hint" id="hint-wav"></span></span></label>
+    </fieldset>
+    <fieldset class="rows">
+      <legend>Overlays</legend>
+      <label class="row"><input type="checkbox" role="switch" data-layer="wind"><i class="thumb t-wind" aria-hidden="true"></i><span class="txt">Wind at 10 m<small>ECMWF open data</small><span class="hint" id="hint-wind"></span></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="drift"><i class="thumb t-drift" aria-hidden="true"></i><span class="txt">Ice drift<small>CMEMS ice velocity</small></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="depth"><i class="thumb t-depth" aria-hidden="true"></i><span class="txt">Depth<small>Under 20 m, isobaths (IBCSO)</small><span class="hint" id="hint-depth"></span></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="bergs"><i class="thumb t-bergs" aria-hidden="true"></i><span class="txt">Icebergs<small>USNIC, with uncertainty</small><span class="hint" id="hint-bergs"></span></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="static"><i class="thumb t-static" aria-hidden="true"></i><span class="txt">Plan on today's ice<small>For comparison</small></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="ref2019"><i class="thumb t-ref" aria-hidden="true"></i><span class="txt">PolarRoute, Dec 2019<small>Reference run</small></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="protected"><i class="thumb t-prot" aria-hidden="true"></i><span class="txt">Protected areas<small>Antarctic Treaty register</small></span></label>
+    </fieldset>
+    <details class="legendbox">
+      <summary>Legend</summary>
+      <div id="legend"></div>
+    </details>
+  </div>
+</aside>
+
+<aside class="panel right" id="rightpanel" aria-label="Decision support">
+  <div class="panel-head">
+    <h2>Voyage and route health</h2>
+    <button class="collapse" aria-expanded="true" aria-controls="rightbody" data-panel="right"><span class="visually-hidden">Collapse decision support</span></button>
+  </div>
+  <div class="panel-body rail" id="rightbody">
     <section>
-      <h2>Voyage plan <small id="vesselname"></small></h2>
+      <h3>Voyage plan <small id="vesselname"></small></h3>
       <div class="field"><span>Destination</span>
         <div class="seg" role="group" aria-label="Destination">
           <button data-dest="approach" aria-pressed="true">Bharati approach</button>
@@ -76,7 +90,7 @@
       <div class="field"><span>Ship position</span>
         <div><span id="startpos"></span> <button class="btn" id="pickstart" aria-pressed="false">Move ship</button></div>
       </div>
-      <div class="field"><label for="depart" class="muted">Leave</label>
+      <div class="field"><label for="depart">Leave</label>
         <select id="depart"></select>
       </div>
       <div class="field"><span>Ice limit</span>
@@ -92,39 +106,46 @@
     </section>
 
     <section>
-      <h2>Two ways to plan</h2>
+      <h3>Two ways to plan</h3>
       <table class="compare" id="compare"></table>
       <div id="planNote"></div>
     </section>
 
     <section>
-      <h2>Route health <small>on the route above</small></h2>
+      <h3>Route health <small>on the route above</small></h3>
       <div class="health"><span class="state" id="healthState"></span><span class="small muted" id="healthWhy"></span></div>
       <ol class="gates" id="gates"></ol>
     </section>
 
     <section>
-      <h2>POLARIS along the track <small>MSC.1/Circ.1519</small></h2>
-      <div class="field"><label for="stage" class="muted">Ice stage</label>
+      <h3>POLARIS along the track <small>MSC.1/Circ.1519</small></h3>
+      <div class="field"><label for="stage">Ice stage</label>
         <select id="stage"><option value="">Not declared</option></select>
       </div>
       <div id="polaris"></div>
     </section>
 
     <section>
-      <h2>Icebergs <small id="bergsrc"></small></h2>
+      <h3>Icebergs <small id="bergsrc"></small></h3>
       <ul class="bergs" id="bergs"></ul>
     </section>
 
     <section>
-      <h2>Ice at the Bharati approach</h2>
+      <h3>Ice at the Bharati approach</h3>
       <svg class="spark" id="spark" role="img" aria-label="Sea-ice concentration at the Bharati approach through the season"></svg>
       <p class="xsmall muted" id="sparknote"></p>
     </section>
 
     <section class="credits" id="credits"></section>
-  </aside>
-</main>
+  </div>
+</aside>
+
+<div class="mapctl" id="mapctl">
+  <div class="readout" id="readout" aria-live="off">Move over the chart to read the values.</div>
+  <div class="scalenote" id="scalenote"></div>
+</div>
+<div class="attribution" id="attribution"></div>
+
 <script type="module" src="assets/js/bridge.js"></script>
 </body>
 </html>
