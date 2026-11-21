@@ -10,6 +10,10 @@ export const WMO = [
   { max: 85, rgb: [255, 125, 7], label: "7–8/10" },
   { max: 101, rgb: [255, 0, 0], label: "9–10/10" },
 ];
+// Canvas text sizes, in px. These mirror the type tokens in app.css
+// (--t-2xs 12px, --t-xs 13px) so chart labels sit on the same scale as the UI.
+export const TYPE_PX = { "2xs": 12, xs: 13 };
+const font = (size, weight = 400) => `${weight} ${TYPE_PX[size]}px 'Atkinson Hyperlegible', sans-serif`;
 export const LAND = [231, 220, 184];
 export const OUTSIDE = [21, 30, 44];   // outside the forecast box: a shade off the page bg,
                                 // so a drawn-but-empty chart never masquerades as "nothing rendered"
@@ -83,7 +87,7 @@ export function gridSampler(g, values, colour, landColour = LAND) {
 // follow the view instead of sitting on box edges that may be off screen.
 export function drawGraticule(ctx, proj, box, { w = Infinity, h = Infinity, z = 1 } = {}) {
   const dLat = z < 2 ? 5 : z < 4 ? 2 : 1, dLon = z < 2 ? 10 : z < 4 ? 5 : 2;
-  ctx.save(); ctx.font = "11px 'Atkinson Hyperlegible', sans-serif";
+  ctx.save(); ctx.font = font("2xs");
   const line = () => { ctx.lineWidth = 0.7; ctx.strokeStyle = "rgba(110,130,150,0.45)"; };
   const label = (t, x, y) => { ctx.lineWidth = 3; ctx.strokeStyle = "rgba(10,16,26,0.85)"; ctx.strokeText(t, x, y); ctx.fillStyle = "#dbe5ee"; ctx.fillText(t, x, y); };
   const inside = (x, y) => x > 6 && x < w - 44 && y > 14 && y < h - 6;
@@ -136,7 +140,7 @@ export function drawMarker(ctx, proj, lat, lon, label, { shape = "dot", colour =
   else ctx.arc(x, y, 5, 0, Math.PI * 2);
   ctx.stroke(); ctx.fill();
   if (label) {
-    ctx.font = "700 12.5px 'Atkinson Hyperlegible', sans-serif"; ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(255,255,255,0.95)";
+    ctx.font = font("xs", 700); ctx.lineWidth = 3.5; ctx.strokeStyle = "rgba(255,255,255,0.95)";
     const tx = align === "left" ? x - 9 - ctx.measureText(label).width : x + 9;
     ctx.strokeText(label, tx, y + 4); ctx.fillStyle = "#12304d"; ctx.fillText(label, tx, y + 4);
   }
@@ -148,7 +152,7 @@ export function drawBerg(ctx, proj, b, near) {
   const r = Math.max(3, Math.min(9, 2 + b.len_nm / 4));  // marker size from USNIC long axis, nm
   ctx.save(); ctx.fillStyle = near ? "#b3261e" : "#ffffff"; ctx.strokeStyle = "#12304d"; ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); ctx.fill(); ctx.stroke();
-  ctx.font = "11.5px 'Atkinson Hyperlegible', sans-serif"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,0.9)";
+  ctx.font = font("2xs"); ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,0.9)";
   ctx.strokeText(b.name, x + r + 3, y + 4); ctx.fillStyle = "#12304d"; ctx.fillText(b.name, x + r + 3, y + 4);
   ctx.restore();
 }
@@ -309,7 +313,7 @@ export function drawBergChain(ctx, proj, t, hits = null) {
   }
   if (k > 1) {
     const [xe, ye] = pts.at(-1);
-    ctx.font = "10px 'Atkinson Hyperlegible', sans-serif"; ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,255,255,0.9)";
+    ctx.font = font("2xs"); ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,255,255,0.9)";
     ctx.strokeText(`×${k}`, xe + 6, ye + 3); ctx.fillStyle = "#33475b"; ctx.fillText(`×${k}`, xe + 6, ye + 3);
   }
   ctx.restore();

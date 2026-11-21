@@ -24,8 +24,8 @@ const [meta, stat] = await Promise.all([fetch("data/meta.json").then((r) => r.js
     <path d="${line}" fill="none" stroke="#a3156f" stroke-width="2.5"/>
     ${rows.map((r) => `<circle cx="${x(r.lead)}" cy="${yM(r.mae_ice)}" r="3.5" fill="#a3156f"/>`).join("")}
     <text x="${(p.l + W - p.r) / 2}" y="${H - 4}" text-anchor="middle">Days ahead</text>
-    <text x="12" y="${p.t + 4}" font-size="11">Edge error, km²</text>
-    <text x="${W - 8}" y="${p.t + 4}" text-anchor="end" font-size="11" fill="#a3156f">Mean error, ice cells</text>`;
+    <text x="12" y="${p.t + 4}" font-size="12">Edge error, km²</text>
+    <text x="${W - 8}" y="${p.t + 4}" text-anchor="end" font-size="12" fill="#a3156f">Mean error, ice cells</text>`;
   const r1 = rows[0], r7 = rows.find((r) => r.lead === 7);
   $("#skillCap").textContent = `Bars: mean integrated ice-edge error (whiskers to the 90th percentile) over ${r1.n} forecast cycles, ${meta.cycles[0].cycle} to ${meta.cycles.at(-1).cycle}. Line: mean absolute concentration error where either field has ice. Day 1: ${Math.round(r1.iiee_km2 / 1000)}k km², day 7: ${Math.round(r7.iiee_km2 / 1000)}k km².`;
   $("#driftText").textContent = `The edge error (the area where the forecast and the later analysis disagree about whether there is more than 15% ice) grows by roughly the same amount every day ahead: about ${Math.round(r1.iiee_km2 / 1000)},000 km² on day 1 and ${Math.round(r7.iiee_km2 / 1000)},000 km² by day 7. That growth is the reason the project corrects the forecast with a learned model instead of using it raw.`;

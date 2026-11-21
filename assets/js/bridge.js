@@ -472,13 +472,13 @@ function renderSpark() {
   const svg = $("#spark"); svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   const yl = y(S.limit);
   svg.innerHTML = `
-    ${[0, 50, 100].map((v) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--rule)"/><text x="${pad.l - 4}" y="${y(v) + 4}" text-anchor="end" font-size="10" style="fill:var(--ink-2)">${v}%</text>`).join("")}
+    ${[0, 50, 100].map((v) => `<line x1="${pad.l}" x2="${W - pad.r}" y1="${y(v)}" y2="${y(v)}" style="stroke:var(--rule)"/><text x="${pad.l - 4}" y="${y(v) + 4}" text-anchor="end" font-size="12" style="fill:var(--ink-2)">${v}%</text>`).join("")}
     <line x1="${pad.l}" x2="${W - pad.r}" y1="${yl}" y2="${yl}" style="stroke:var(--fail)" stroke-dasharray="4 3"/>
-    <text x="${W - pad.r}" y="${yl - 4}" text-anchor="end" font-size="10" style="fill:var(--fail)">${S.limit}% limit</text>
+    <text x="${W - pad.r}" y="${yl - 4}" text-anchor="end" font-size="12" style="fill:var(--fail)">${S.limit}% limit</text>
     <path d="${line(obs)}" fill="none" style="stroke:var(--ink)" stroke-width="1.6"/>
     <path d="${line(fc)}" fill="none" style="stroke:var(--route)" stroke-width="2" stroke-dasharray="5 3"/>
-    <text x="${pad.l}" y="${H - 4}" font-size="10" style="fill:var(--ink-2)">${fmtDate(pts[0].d, { day: "numeric", month: "short" })}</text>
-    <text x="${W - pad.r}" y="${H - 4}" text-anchor="end" font-size="10" style="fill:var(--ink-2)">${fmtDate(pts[pts.length - 1].d, { day: "numeric", month: "short" })}</text>`;
+    <text x="${pad.l}" y="${H - 4}" font-size="12" style="fill:var(--ink-2)">${fmtDate(pts[0].d, { day: "numeric", month: "short" })}</text>
+    <text x="${W - pad.r}" y="${H - 4}" text-anchor="end" font-size="12" style="fill:var(--ink-2)">${fmtDate(pts[pts.length - 1].d, { day: "numeric", month: "short" })}</text>`;
   const lastObs = obs[obs.length - 1], lastFc = fc[fc.length - 1];
   $("#sparknote").textContent = `Mean concentration in a box around the approach point. Solid line: each day's CMEMS analysis since ${fmtDate(pts[0].d, { day: "numeric", month: "short" })}. Dashed: the ${s.outlook_cycle} forecast, ${lastObs.v}% today falling to ${lastFc.v}% by ${fmtDate(lastFc.d, { day: "numeric", month: "short" })}.`;
 }
