@@ -41,7 +41,7 @@ Second, icebergs are handled with a published physics equation (Wagner, Dell and
 
 Third, the routing is done by PolarRoute, an open-source tool from the British Antarctic Survey, not by a home-made algorithm.
 
-The prototype you will be asked about was built for an internal hackathon round (called ISIH in the repo). It trains a small U-Net on real satellite data, beats a "yesterday's ice stays the same" baseline by 18 to 31 percent, routes a ship from Cape Town to Bharati with the real routing tool, and shows the result in a browser console. It also found a data problem: the satellite record writes some coastal cells as 0 percent ice when it actually means "I do not know". That problem hides the fact that Bharati's own cell was closed to the ship on 23 of 31 days in December 2019.
+The September prototype trains a small U-Net on real satellite data, beats a "yesterday's ice stays the same" baseline by 18 to 31 percent, routes a ship from Cape Town to Bharati with the real routing tool, and shows the result in a browser console. It also found a data problem: the satellite record writes some coastal cells as 0 percent ice when it actually means "I do not know". That problem hides the fact that Bharati's own cell was closed to the ship on 23 of 31 days in December 2019.
 
 The honest summary of what is not done: no calibrated uncertainty yet, no iceberg trajectory forecast on real wind and current yet, the sea-ice model's output is not yet wired into the router, and the headline skill numbers are an upper bound because the background field was a reanalysis and not a true forecast.
 
