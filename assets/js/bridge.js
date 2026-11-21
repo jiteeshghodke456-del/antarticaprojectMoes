@@ -24,7 +24,9 @@ const S = {
 
 async function loadCycle(c) {
   if (S.cache.has(c.cycle)) return S.cache.get(c.cycle);
-  const buf = await (await fetch(`data/cycles/${c.cycle}.bin`)).arrayBuffer();
+  const r = await fetch(`data/cycles/${c.cycle}.bin`);
+  if (!r.ok) throw new Error(`cycle ${c.cycle}: HTTP ${r.status}`);
+  const buf = await r.arrayBuffer();
   const g = S.meta.grids, L = c.leads;
   const n = g.sic.ny * g.sic.nx, n2 = g.thk.ny * g.thk.nx, n3 = g.drift.ny * g.drift.nx;
   const f = {
@@ -165,6 +167,9 @@ function insets() {
   const top = Math.max($(".brandbar").getBoundingClientRect().bottom, $("#finding").hidden ? 0 : $("#finding").getBoundingClientRect().bottom);
   z.l = Math.round(L.right + gap); z.r = Math.round(W - Rr.left + gap); z.t = Math.round(top + gap); z.b = 36;
   if (W - z.l - z.r < 320) { z.l = 0; z.r = 0; }   // too narrow to dodge both: let the panels overlap
+  // Height floor: a grown ribbon (e.g. its open details) must shrink the
+  // chart, never collapse it to zero height.
+  if (innerHeight - z.t - z.b < 280) z.t = Math.max(0, innerHeight - 280 - z.b);
   return z;
 }
 
@@ -229,7 +234,10 @@ function shipPosition() {
 // Drift tracks belong to one forecast cycle; on other cycles they are not drawn.
 const tracksHere = (f) => (S.lay.berg_tracks && f.cycle.cycle === S.lay.berg_tracks.cycle ? S.lay.berg_tracks : null);
 // Vector length = forecast rate x this many days (the horizon of the "ok" tracks).
-const trackDays = (T) => Math.max(...T.tracks.filter((t) => t.status === "ok").map((t) => t.daily_positions.at(-1).day));
+const trackDays = (T) => {
+  const d = T.tracks.filter((t) => t.status === "ok" && t.daily_positions?.length).map((t) => t.daily_positions.at(-1).day);
+  return d.length ? Math.max(...d) : 9;
+};
 
 // Berg under the cursor (marker or held marker within 12 px), for the inspector.
 function bergAt(x, y) {
@@ -462,14 +470,25 @@ function renderStart() {
 
 // ------------------------------------------------------------------ orchestration
 let current = null;
+let refreshSeq = 0;
 async function refresh({ recompute = true } = {}) {
+ try {
+  const seq = ++refreshSeq;
   const f = await loadCycle(S.cycle);
+  if (seq !== refreshSeq) return;   // a newer click superseded this load
   current = f;
   if (S.lead >= f.leads) S.lead = f.leads - 1;
   if (recompute) S.result = compute(f);
   renderTimeline(f); renderStart(); renderLayerControls(); renderLegend();
   drawChart(f);
   if (recompute) { renderCompare(); renderGates(); renderPolaris(); renderBergs(); renderSpark(); }
+ } catch (e) { showError(e); }
+}
+
+function showError(e) {
+  const el = $("#finding"); el.hidden = false; el.className = "ribbon";
+  el.innerHTML = `<div class="verdict">Something failed</div><p>${e.message}</p>`;
+  console.error(e);
 }
 
 function bindPressed(selector, attr, onPick) {
@@ -574,10 +593,11 @@ async function main() {
     $("#pickstart").setAttribute("aria-pressed", "false"); $("#pickstart").textContent = "Move ship";
     refresh();
   });
-  let t; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { baseKey = ""; drawChart(current); }, 150); });
+  let t; window.addEventListener("resize", () => { clearTimeout(t); t = setTimeout(() => { if (current) { baseKey = ""; drawChart(current); } }, 150); });
   $("#zoomIn").addEventListener("click", () => view.zoomCentre(1.6));
   $("#zoomOut").addEventListener("click", () => view.zoomCentre(1 / 1.6));
   $("#zoomReset").addEventListener("click", () => view.reset());
+  document.addEventListener("toggle", () => { if (current) { baseKey = ""; drawChart(current); } }, true);
   await refresh();
 }
 main().catch((e) => {

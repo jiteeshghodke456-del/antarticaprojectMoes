@@ -11,7 +11,8 @@ export const WMO = [
   { max: 101, rgb: [255, 0, 0], label: "9–10/10" },
 ];
 const LAND = [231, 220, 184];
-const OUTSIDE = [17, 26, 39];   // outside the forecast box: the dark viewer canvas
+const OUTSIDE = [21, 30, 44];   // outside the forecast box: a shade off the page bg,
+                                // so a drawn-but-empty chart never masquerades as "nothing rendered"
 export function wmoColour(pct) { for (const c of WMO) if (pct < c.max) return c.rgb; return WMO[WMO.length - 1].rgb; }
 
 export class Projection {
@@ -35,7 +36,10 @@ export class Projection {
         const [X, Y] = this.raw(la, lo);
         x0 = Math.min(x0, X); x1 = Math.max(x1, X); y0 = Math.min(y0, Y); y1 = Math.max(y1, Y);
       }
-    const W = w - inset.l - inset.r, H = h - inset.t - inset.b;
+    // Floors: panels + ribbon can momentarily claim more space than the window
+    // has (short windows, an opened details element). A zero or negative scale
+    // draws an invisible chart, which reads as "the map disappeared".
+    const W = Math.max(w - inset.l - inset.r, 320), H = Math.max(h - inset.t - inset.b, 240);
     this.s = Math.min((W - 2 * pad) / (x1 - x0), (H - 2 * pad) / (y1 - y0));
     this.cx = inset.l + W / 2 - this.s * (x0 + x1) / 2;
     this.cy = inset.t + H / 2 + this.s * (y0 + y1) / 2;
@@ -269,6 +273,7 @@ export function destination(lat, lon, bearingDeg, km) {
 // unknown). The vector is drawn to map scale: net km/day x days, at least
 // minPx long so its direction stays readable at low zoom.
 export function drawBergDrift(ctx, proj, t, { days, minPx = 12, dayShown = null } = {}) {
+  if (!t.daily_positions?.length) return;   // a malformed track must not blank the whole overlay
   const pts = t.daily_positions.map((p) => proj.fwd(p.lat, p.lon));
   ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
   const path = () => { ctx.beginPath(); pts.forEach(([x, y], k) => (k ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); };

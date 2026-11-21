@@ -443,3 +443,6 @@ svg.chart text { font-family: var(--font-ui); font-size: 12px; fill: var(--ink-2
   .bignum { font-size: var(--t-xl); }
 }
 @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+
+/* zoom transforms are built top-left; the browser default (centre) shears the raster off the vectors */
+#base { transform-origin: 0 0; }
