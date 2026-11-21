@@ -180,6 +180,10 @@ const truthData = () => (VF() ? need("truth", async () => {
 const truthExtra = () => (VF() ? need("truthExtra", () => loadJSON(`data/research/${VF().truth.extra}`)) : null);
 const modelData = (cy) => { const c = VF()?.model.cycles[cy]; return c ? need(`model:${cy}`, async () => { const buf = await loadBin(`data/research/${c.file}`), g = VF().grid, n = g.nx * g.ny; return (li) => new Uint8Array(buf, li * n, n); }) : null; };
 const modelEdges = (cy) => { const c = VF()?.model.cycles[cy]; return c ? need(`edges:${cy}`, () => loadJSON(`data/research/${c.edges}`)) : null; };
+// AI-corrected 15% edge: exists only for the one cycle + leads the U-Net ran on
+const AI = () => RES()?.ai;
+const aiAt = (f) => { const a = AI(); return a && f && f.cycle.cycle === a.cycle && a.leads.includes(S.lead) ? a : null; };
+const aiEdges = () => (AI() ? need("aiEdges", () => loadJSON(`data/research/${AI().file}`)) : null);
 
 // Is (cycle, lead) verifiable against a satellite day?
 function verifAt(f) {
@@ -345,6 +349,10 @@ function drawOverlay(f) {
       if (E?.[String(S.lead)]) drawPolylines(ctx, P, E[String(S.lead)], { colour: "#18b4dc", width: 2, dash: [7, 4], halo: "rgba(8,16,28,0.85)" });
       if (X?.edges[v.date]) drawPolylines(ctx, P, X.edges[v.date], { colour: "#ff9a1f", width: 2.2, halo: "rgba(8,16,28,0.85)" });
     }
+  }
+  if (S.layers.edges && aiAt(f)) {
+    const L = aiEdges()?.[String(S.lead)];
+    if (L) drawPolylines(ctx, P, L, { colour: "#c983f7", width: 2, dash: [2, 3], halo: "rgba(8,16,28,0.85)" });
   }
   if (S.layers.ref2019) {
     const pts = S.stat.route2019.coords.map(([lo, la]) => [la, lo]);
@@ -549,6 +557,7 @@ function renderLegend() {
   if (S.layers.wind && s.wind) keys.push(`<span><i class="swatch-barb"></i>Wind barb, kt: half 5, full 10, pennant 50; ${s.windAt.slice(11)} UTC; SH feathers</span>`);
   if (S.layers.depth) keys.push(`<span><i class="swatch-hatch"></i>Under ${S.lay.depth?.min_depth_m} m</span>`, `<span><i class="swatch-line iso"></i>${RES()?.bathy?.isobaths.levels_m.join(", ") ?? ""} m isobaths</span>`);
   if (S.layers.edges && f && verifAt(f)) keys.push(`<span><i class="swatch-line edge-sat"></i>Satellite 15% edge</span>`, `<span><i class="swatch-line edge-mod"></i>Model 15% edge</span>`);
+  if (S.layers.edges && aiAt(f)) keys.push(`<span><i class="swatch-line edge-ai"></i>AI-corrected 15% edge (25 km)</span>`);
   cards.push(`<div class="card keys">${keys.join("")}</div>`);
   $("#legend").innerHTML = cards.join("");
 }

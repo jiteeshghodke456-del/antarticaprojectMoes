@@ -215,7 +215,44 @@ def build(SRC: Path, OUT: Path, cycles: list[dict], missing: list[dict]) -> dict
 
     out["verif"] = _verification(SRC, R, cycles, missing)
     out["analysis_currents"] = _analysis_currents(SRC, R, cycles, out["verif"], missing)
+    out["ai"] = _ai(SRC, R, missing)
     return out
+
+
+# ==================================================================== AI corrected edges
+def _ai(SRC: Path, R: Path, missing: list[dict]) -> dict | None:
+    """15 % edges of the U-Net-corrected forecast (scripts/corrected_forecast.py
+    in the source repo), on the model-native 25 km grid, for the one cycle it
+    was produced for."""
+    npz_f = SRC / "dakshin" / "figures" / "corrected_forecast.npz"
+    js_f = SRC / "dakshin" / "figures" / "corrected_forecast.json"
+    files = sorted((SRC / "data" / "nsidc_nrt").glob("sic_pss25_*.nc"))
+    if not (npz_f.exists() and js_f.exists() and files):
+        missing.append({"layer": "ai", "reason": "dakshin/figures/corrected_forecast.{npz,json} (or nsidc_nrt grid) not in the source repo"})
+        return None
+    from pyproj import Transformer
+    ds0 = xr.open_dataset(files[0])
+    crs = ds0.crs.attrs
+    x, y = ds0.x.values, ds0.y.values
+    ds0.close()
+    to_ll = Transformer.from_crs(crs["proj4text"], "EPSG:4326", always_xy=True)
+    meta = json.loads(js_f.read_text())
+    z = np.load(npz_f)
+    edges, leads = {}, []
+    for lead in (1, 3, 5, 7):
+        k = f"corrected_lead{lead}"
+        if k in z:
+            edges[str(lead)] = _contours(x, y, np.where(np.isfinite(z[k]), z[k], np.nan), [0.15],
+                                         to_lonlat=lambda a, b: to_ll.transform(a, b), nd=3, min_pts=3)
+            leads.append(lead)
+    (R / "verif").mkdir(exist_ok=True)
+    (R / "verif" / "ai_edges.json").write_text(json.dumps(edges, separators=(",", ":")))
+    return {"cycle": meta["cycle"], "leads": leads, "file": "verif/ai_edges.json",
+            "bytes": (R / "verif" / "ai_edges.json").stat().st_size,
+            "grid": "25 km NSIDC (model-native); the correction does not add resolution",
+            "decision": {"satellite_day0_reachable": meta["satellite_day0_reachable"],
+                         "station_reachable": {k: v["station_reachable"] for k, v in meta["leads"].items()}},
+            "source": "scripts/corrected_forecast.py, checkpoints Release model-v0.1 (2026-11-21 re-run)"}
 
 
 # ==================================================================== analysis currents
