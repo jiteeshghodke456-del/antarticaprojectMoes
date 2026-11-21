@@ -16,7 +16,7 @@ Output: data/  in this repo
 Nothing here invents a number. The ice fields are block-averaged copies of the
 CMEMS files; everything else is copied or summarised from files in the source repo.
 
-Run:  python tools/build_data.py ../sih26059-antarctic-navigation
+Run:  python tools/build_data.py ../SIH26059-antarctic-navigation
 """
 from __future__ import annotations
 

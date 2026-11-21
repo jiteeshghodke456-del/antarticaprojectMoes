@@ -9,13 +9,13 @@ Live site: https://jiteeshghodke456-del.github.io/antarticaprojectMoes/
 - **Evidence** (`evidence.html`): forecast drift by lead time, forecast skill against satellite truth, the prototype model and its caveats, the resolution study (F1, F3), the iceberg-drift hindcast, the coastal 0.0% artifact, the December 2019 destination window, PolarRoute corridors.
 - **Study guide**: [`docs/PROJECT_EXPLAINER.md`](docs/PROJECT_EXPLAINER.md) explains every concept, module and design choice, with reading links.
 
-Source project (the GitHub repository keeps its older name for now): https://github.com/jiteeshghodke456-del/sih26059-antarctic-navigation
+Source project (the GitHub repository keeps its older name for now): https://github.com/jiteeshghodke456-del/dakshin
 
 ## Updating the data
 
 ```
 pip install xarray h5netcdf h5py netCDF4 numpy matplotlib
-python tools/build_data.py ../sih26059-antarctic-navigation
+python tools/build_data.py ../SIH26059-antarctic-navigation
 ```
 
 ## Run locally
