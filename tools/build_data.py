@@ -392,9 +392,9 @@ if bathy_f.exists():
     battrs = dict(ds.attrs); ds.close()
     if blat[0] > blat[-1]:
         blat = blat[::-1]; el = el[::-1]; el_mean = el_mean[::-1]
-    # Crop to the Bridge chart box (assets/js/bridge.js BOX: 78-54 S, 0-80 E) plus a
-    # half-degree margin; the source grid now runs north to 30 S with GEBCO.
-    ky = (blat >= -78.5) & (blat <= -53.5); kx = (blon >= -0.5) & (blon <= 80.5)
+    # Crop to the Bridge chart box (assets/js/bridge.js BOX: 78-54 S, 0-80 E) with a
+    # half-degree margin south, west and east; the source grid now runs north to 30 S with GEBCO.
+    ky = (blat >= -78.5) & (blat <= -54.0); kx = (blon >= -0.5) & (blon <= 80.5)
     blat, blon = blat[ky], blon[kx]
     el, el_mean = el[np.ix_(ky, kx)], el_mean[np.ix_(ky, kx)]
     B = 2
@@ -433,7 +433,7 @@ if bathy_f.exists():
         "reduction": "2x2 block max of 'elevation' (itself the shallowest value per 0.05 deg cell)",
         "min_depth_m": min_depth, "min_depth_provenance": "dakshin/ice_meshes.py GOLOVNIN['min_depth']",
         "contours": {"levels_m": LEVELS, "basis": "2x2 block mean of elevation_mean", "lines": lines},
-        "crop": "78.5-53.5 S, 0-80.5 E (the Bridge chart box plus margin)",
+        "crop": "78.5-54 S, 0-80.5 E (the Bridge chart box)",
         "source": battrs.get("title", ""), "citation": battrs.get("references", ""),
         "licence": battrs.get("license", ""), "caveat": battrs.get("caveat", ""),
         "provenance": "data/bathymetry/ibcso_v2_corridor_0p05.nc",
