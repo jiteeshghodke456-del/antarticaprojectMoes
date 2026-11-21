@@ -13,7 +13,7 @@ const fmtDate = (iso, opt = { weekday: "short", day: "numeric", month: "short" }
 const BOX = { lat0: -78, lat1: -54, lon0: 0, lon1: 80 };
 const DESTS = {
   approach: { name: "Bharati approach", lat: -68.5, lon: 76.2, note: "100 km north of the station, the point the source project scores" },
-  station: { name: "Bharati station edge", lat: -69.40683, lon: 76.19533, note: "nearest open-ocean grid cell to the station" },
+  station: { name: "Bharati station edge", lat: -69.40683, lon: 76.19533, note: "nearest grid cell to the station with at least the minimum depth" },
 };
 const SEA = [219, 232, 242];     // WMO "ice free"
 // Streaklines integrate the (frozen) daily-mean current for this long at 1x zoom,
@@ -111,7 +111,28 @@ function bergRadiusKm(b, isoDay) {
 }
 
 // ------------------------------------------------------------------ compute
+// Router cells too shallow for the hull: a cell is blocked when any IBCSO
+// depth block (shallowest point per ~0.1 deg) whose centre falls in it is
+// shallower than the vessel's minimum depth, or mostly dry. Built once per
+// router grid; the chart gate then samples the same depth grid at the legs.
+let blockedCache = null;
+function shallowCells(g) {
+  if (!S.depth || !S.lay.depth) return null;
+  const key = `${g.ny}x${g.nx}`;
+  if (blockedCache?.key === key) return blockedCache.mask;
+  const D = S.depth, dg = S.lay.depth.grid, min = S.lay.depth.min_depth_m, mask = new Uint8Array(g.ny * g.nx);
+  for (let i = 0; i < dg.ny; i++) for (let j = 0; j < dg.nx; j++) {
+    const e = D[i * dg.nx + j];
+    if (e !== 32767 && e <= -min) continue;
+    const ri = Math.round((dg.lat0 + dg.dlat * i - g.lat0) / g.dlat), rj = Math.round((dg.lon0 + dg.dlon * j - g.lon0) / g.dlon);
+    if (ri >= 0 && rj >= 0 && ri < g.ny && rj < g.nx) mask[ri * g.nx + rj] = 1;
+  }
+  blockedCache = { key, mask };
+  return mask;
+}
+
 function compute(f) {
+  f.blocked = shallowCells(f.g);
   const r = new Router(f);
   const start = r.nearestOcean(S.start.lat, S.start.lon);
   const d = DESTS[S.dest];
@@ -126,7 +147,7 @@ function compute(f) {
   const wx = weatherAlong(f, forecast, departHours);
   const decision = evaluateGates({ R: S.rules, route: forecast, iceLimitPct: S.limit, destName: d.name, destReachable: !!forecast,
     nAlternatives: nAlt, legDepths: depthsAlong(forecast), worstHs: wx.hs, worstWind: wx.wind });
-  return { r, start, goal, forecast, statik, blocked, alts, decision, wx };
+  return { r, start, goal, forecast, statik, blocked, alts, decision, wx, nShallow: f.blocked ? f.blocked.reduce((n, v, k) => n + (v && f.sic(0)[k] !== 255 ? 1 : 0), 0) : 0 };
 }
 
 // ------------------------------------------------------------------ research data (lazy)
@@ -147,6 +168,11 @@ const fieldData = (name) => { const m = RES()?.fields?.[name]; return m ? need(n
 const bathyData = () => { const m = RES()?.bathy; return m ? need("bathy", async () => gridField({ ...m, leads: 1 }, await loadBin(`data/research/${m.file}`))) : null; };
 const isobaths = () => (RES()?.bathy ? need("isobaths", () => loadJSON(`data/research/${RES().bathy.isobaths.file}`)) : null);
 const VF = () => RES()?.verif;
+// Analysis currents exist for the days of the latest fully verifiable cycle, so
+// streaklines can share a chart with the satellite comparison.
+const AC = () => RES()?.analysis_currents;
+const analysisHere = (f) => !!AC() && f?.cycle.cycle === AC().cycle;
+const analysisData = () => (AC() ? need("cur_analysis", async () => gridField(AC(), await loadBin(`data/research/${AC().file}`))) : null);
 const truthData = () => (VF() ? need("truth", async () => {
   const buf = await loadBin(`data/research/${VF().truth.file}`), g = VF().grid, n = g.nx * g.ny, D = VF().dates.length;
   return { conc: (d) => new Uint8Array(buf, d * n, n), qa: (d) => new Uint8Array(buf, (D + d) * n, n) };
@@ -183,6 +209,7 @@ function samplers(f) {
   } else {
     out.sic = (la, lo) => bilinear(g.sic, f.sic(L), 255, 1, la, lo); out.sicG = g.sic;
     out.thk = (la, lo) => bilinear(g.thk, f.thk(L), 255, 0.1, la, lo);
+    if (analysisHere(f) && (S.field === "cur" || S.layers.currents)) { const a = analysisData(); if (a) { out.cur = two(a); out.curAnalysis = true; } }
   }
   const bd = bathyData(); if (bd) { const a = bd.slice(0, 0); out.elev = (la, lo) => bilinear(bd.g, a, bd.nodata, 1, la, lo); }
   const v = verifOn() ? verifAt(f) : null;
@@ -415,7 +442,9 @@ function renderCompare() {
   else if (F && T) note = `<div class="callout">Both plans stay under the limit for this departure. The forecast-aware one is ${Math.abs((T.hours - F.hours) / 24).toFixed(1)} days ${T.hours >= F.hours ? "faster" : "slower"}.</div>`;
   else if (!F) note = `<div class="callout warn">No track stays under ${S.limit}% on this forecast. The red dashed line is the least-bad way through, shown only to point at where it is blocked (${R.blocked ? R.blocked.overKm.toFixed(0) + " km over the limit" : "no connection at all"}). Try a later departure or a later forecast.</div>`;
   const alt = R.alts.map((a) => `${a.pct}%: ${a.res ? days(a.res.hours) : "no route"}`).join(" · ");
-  note += `<p class="xsmall muted" style="margin-top:8px">Fallback corridors at tighter limits: ${alt || "none tested"}. Beyond the ${S.result.r.f.leads}-day forecast the last forecast day is held. The browser router applies no wave penalty and does not avoid shallow water, so ETAs are a lower bound; waves, wind and depth enter through the weather and chart gates below.</p>`;
+  const d = DESTS[S.dest];
+  if (R.goal) note += `<p class="xsmall muted" style="margin-top:8px">${d.name} resolves to the nearest 0.25° cell with water at least ${S.lay.depth?.min_depth_m ?? "–"} m deep (IBCSO), ${R.goal.km.toFixed(0)} km from the point. ${R.nShallow} sea cells of the forecast grid are closed to the router as too shallow.</p>`;
+  note += `<p class="xsmall muted" style="margin-top:8px">Fallback corridors at tighter limits: ${alt || "none tested"}. Beyond the ${S.result.r.f.leads}-day forecast the last forecast day is held. The browser router applies no wave penalty, so ETAs are a lower bound; it closes water shallower than the minimum depth, and waves and wind enter through the weather gate.</p>`;
   $("#planNote").innerHTML = note;
 }
 
@@ -497,7 +526,7 @@ function renderLegend() {
   } else if (S.field === "thk") cards.push(scale("Ice thickness", `CMEMS sithick, m, ${resTxt}`, rampCSS("dense"), [[0, "0"], [25, "1"], [50, "2"], [75, "3"], [100, "4+"]]));
   else if (S.field === "sst") cards.push(scale("Sea-surface temperature", "CMEMS thetao, °C", rampCSS("thermal"), [[0, "−2"], [1, ""], [20, "0"], [40, "2"], [60, "4"], [80, "6"], [100, "8+"]],
     `<div class="mark" style="left:${(100 * (RES().fields.sst.freezing_point_c + 2) / 10).toFixed(1)}%"></div><p class="xsmall muted">Mark: ${RES().fields.sst.freezing_point_c} °C, ${RES().fields.sst.freezing_point_note}.</p>`));
-  else if (S.field === "cur") cards.push(scale("Surface current speed", "CMEMS uo/vo, m/s", rampCSS("speed"), [[0, "0"], [25, "0.2"], [50, "0.4"], [75, "0.6"], [100, "0.8+"]]));
+  else if (S.field === "cur") cards.push(scale("Surface current speed", s.curAnalysis ? `CMEMS ${AC().label}, m/s` : "CMEMS uo/vo forecast, m/s", rampCSS("speed"), [[0, "0"], [25, "0.2"], [50, "0.4"], [75, "0.6"], [100, "0.8+"]]));
   else if (S.field === "innov") cards.push(scale("Innovation, model − satellite", "ice concentration, points", rampCSS("balance", 9), [[0, "−50"], [25, "−25"], [50, "0"], [75, "+25"], [100, "+50"]],
     `<p class="xsmall muted">Red: the model has more ice than the satellite saw. Blue: less. Grey hatch: satellite cells its QA flag marks untrustworthy (not scored).</p>`));
   else if (S.sicMode === "cont") cards.push(scale("Ice concentration", `CMEMS, %, ${resTxt}`, rampCSS("ice"), [[0, "0"], [25, "25"], [50, "50"], [75, "75"], [100, "100"]]));
@@ -514,7 +543,7 @@ function renderLegend() {
   const keys = [`<span><i class="swatch-line"></i>Forecast-aware route</span>`];
   if (S.layers.static) keys.push(`<span><i class="swatch-line dash"></i>Plan on today's ice</span>`);
   if (S.layers.ref2019) keys.push(`<span><i class="swatch-line ref"></i>PolarRoute 2019</span>`);
-  if (S.layers.currents && s.cur) keys.push(`<span><i class="swatch-stream"></i>Streakline: ${(STREAK_S / 86400 / view.z).toFixed(1)} days of flow in the day's mean current, tail to head</span>`);
+  if (S.layers.currents && s.cur) keys.push(`<span><i class="swatch-stream"></i>Streakline: ${(STREAK_S / 86400 / view.z).toFixed(1)} days of flow in the day's mean ${s.curAnalysis ? "analysis" : "forecast"} current, tail to head</span>`);
   if (S.layers.idrift) keys.push(`<span><i class="swatch-arrow"></i>Ice drift, ${s.res ? "8 px per 10 cm/s" : "0.25° archive"}</span>`);
   if (S.layers.wavedir && s.wdir) keys.push(`<span><i class="swatch-arrow wave"></i>Peak waves travel this way (VMDR + 180°)</span>`);
   if (S.layers.wind && s.wind) keys.push(`<span><i class="swatch-barb"></i>Wind barb, kt: half 5, full 10, pennant 50; ${s.windAt.slice(11)} UTC; SH feathers</span>`);
@@ -534,7 +563,12 @@ function renderLayerControls() {
     const el = document.querySelector(sel); if (!el) return; el.disabled = !ok;
     const h = el.closest("label").querySelector(".hint"); if (h) h.textContent = ok ? "" : hint;
   };
-  for (const [sel, key] of [['input[name="field"][value="cur"]', "cur"], ['[data-layer="currents"]', "cur"], ['input[name="field"][value="sst"]', "sst"],
+  const ana = analysisHere(f);
+  for (const [sel, key] of [['input[name="field"][value="cur"]', "cur"], ['[data-layer="currents"]', "cur"]])
+    set(sel, (res && !!RES().fields[key]) || ana, RES()?.fields?.[key] ? `${only}; analysis currents exist for the ${fmtDate(AC()?.cycle ?? RES().cycle, { day: "numeric", month: "short" })} forecast days` : reasonFor(`research.${key}`));
+  $("#sub-cur").textContent = ana ? `Ocean: CMEMS ${AC().label}` : "Ocean: CMEMS surface uo/vo";
+  $("#sub-currents").textContent = ana ? `Daily ${AC().label}; 7 days of flow at 1×` : "7 days of flow at 1×, shorter as you zoom";
+  for (const [sel, key] of [['input[name="field"][value="sst"]', "sst"],
     ['input[name="field"][value="wav"]', "wav"], ['[data-layer="wavedir"]', "wav"], ['[data-layer="wind"]', "wind"]])
     set(sel, res && !!RES().fields[key], RES()?.fields?.[key] ? only : reasonFor(`research.${key}`));
   set('[data-layer="depth"]', !!S.lay.depth || !!RES()?.bathy, reasonFor("depth"));
@@ -629,14 +663,18 @@ function renderStart() {
 
 // ------------------------------------------------------------------ orchestration
 let current = null;
-let refreshSeq = 0;
+let refreshSeq = 0, recomputePending = false;
 async function refresh({ recompute = true } = {}) {
  try {
+  // A superseded refresh must not drop a pending recompute: a cycle change
+  // followed at once by a layer change must still re-route on the new cycle.
+  recomputePending ||= recompute || (current && current.cycle.cycle !== S.cycle.cycle);
   const seq = ++refreshSeq;
   const f = await loadCycle(S.cycle);
   if (seq !== refreshSeq) return;   // a newer click superseded this load
   current = f;
   if (S.lead >= f.leads) S.lead = f.leads - 1;
+  recompute = recomputePending; recomputePending = false;
   if (recompute) S.result = compute(f);
   renderTimeline(f); renderStart(); renderLayerControls(); renderLegend();
   drawChart(f);
@@ -672,7 +710,7 @@ function inspect(f, lat, lon) {
   else if (sic !== undefined) rows.push(`Ice <b>${sic.toFixed(0)}%</b>${s.res ? "" : " (0.25°)"}`);
   const thk = s.thk?.(lat, lon); if (Number.isFinite(thk)) rows.push(`Thickness <b>${thk.toFixed(2)} m</b>`);
   const dr = s.idrift?.(lat, lon); if (dr && S.layers.idrift) rows.push(`Ice drift <b>${(Math.hypot(dr[0], dr[1]) * 100).toFixed(1)} cm/s</b> toward ${dirTo(dr[0], dr[1])}°`);
-  const cu = s.cur?.(lat, lon); if (cu && (S.layers.currents || S.field === "cur")) rows.push(`Current <b>${(Math.hypot(cu[0], cu[1]) * 100).toFixed(1)} cm/s</b> toward ${dirTo(cu[0], cu[1])}°`);
+  const cu = s.cur?.(lat, lon); if (cu && (S.layers.currents || S.field === "cur")) rows.push(`Current${s.curAnalysis ? " (analysis)" : ""} <b>${(Math.hypot(cu[0], cu[1]) * 100).toFixed(1)} cm/s</b> toward ${dirTo(cu[0], cu[1])}°`);
   const t = s.sst?.(lat, lon); if (Number.isFinite(t) && S.field === "sst") rows.push(`SST <b>${t.toFixed(2)} °C</b>`);
   const hs = s.hs?.(lat, lon); if (Number.isFinite(hs) && (S.field === "wav" || S.layers.wavedir)) rows.push(`Waves <b>${hs.toFixed(2)} m</b> from ${s.wdir(lat, lon).toFixed(0)}°`);
   const w = s.wind?.(lat, lon); if (w) rows.push(`Wind <b>${(Math.hypot(w[0], w[1]) * 1.943844).toFixed(0)} kt</b> from ${dirTo(-w[0], -w[1])}° <span class="muted">${s.windAt.slice(5).replace("T", " ")} UTC</span>`);

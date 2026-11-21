@@ -90,6 +90,11 @@ export class Router {
   }
 
   isLand(idx) { return this.f.sic(0)[idx] === 255; }
+  // Too shallow for the hull (field.blocked, built from the IBCSO depth grid:
+  // any depth block in the cell shallower than the minimum depth, or dry,
+  // blocks the whole cell, the same "shallowest value wins" rule as the
+  // Python router). Treated exactly like land.
+  isBlocked(idx) { return this.isLand(idx) || (this.f.blocked ? this.f.blocked[idx] === 1 : false); }
 
   nearestOcean(lat, lon) {
     const g = this.f.g; const [i0, j0] = this.cellOf(lat, lon);
@@ -97,7 +102,7 @@ export class Router {
     for (let r = 0; r < 40 && !best; r++) {
       for (let i = i0 - r; i <= i0 + r; i++) for (let j = j0 - r; j <= j0 + r; j++) {
         if (i < 0 || j < 0 || i >= g.ny || j >= g.nx) continue;
-        const idx = i * g.nx + j; if (this.isLand(idx)) continue;
+        const idx = i * g.nx + j; if (this.isBlocked(idx)) continue;
         const d = haversineKm(lat, lon, this.lat(i), this.lon(j));
         if (d < bd) { bd = d; best = { i, j, idx, km: d }; }
       }
@@ -136,7 +141,7 @@ export class Router {
         const vi = ui + NB[k][0], vj = uj + NB[k][1];
         if (vi < 0 || vj < 0 || vi >= g.ny || vj >= g.nx) continue;
         const v = vi * g.nx + vj; if (done[v]) continue;
-        const sv8 = S[v]; if (sv8 === 255) continue;
+        const sv8 = S[v]; if (sv8 === 255 || (this.f.blocked && this.f.blocked[v] === 1)) continue;
         const sic = Math.max(su, sv8 / 100);
         let spd, over = 0;
         if (sic > lim) { if (!penalise) continue; spd = VESSEL.minSpeedKn; over = 1; }
