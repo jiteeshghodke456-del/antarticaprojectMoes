@@ -741,7 +741,7 @@ async function main() {
   const cycles = S.meta.cycles;
   S.cycle = cycles[cycles.length - 1];
   $("#vesselname").textContent = `${VESSEL.name}, IMO ${VESSEL.imo}`;
-  $("#cycle").innerHTML = cycles.slice().reverse().map((c) => `<option value="${c.cycle}">${fmtDate(c.cycle, { day: "numeric", month: "short", year: "numeric" })}</option>`).join("");
+  $("#cycle").innerHTML = cycles.slice().reverse().map((c) => `<option value="${c.cycle}"${c.stale ? ' title="Stale copy of the previous day\'s forecast (KNOWN_STALE.md)"' : ""}>${fmtDate(c.cycle, { day: "numeric", month: "short", year: "numeric" })}${c.stale ? " — stale copy" : ""}</option>`).join("");
   $("#stage").innerHTML += STAGES.slice(1).map((s) => `<option>${s}</option>`).join("");
 
   const setCycle = (iso) => { S.cycle = cycles.find((c) => c.cycle === iso); $("#cycle").value = iso; refresh(); };

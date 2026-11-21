@@ -50,8 +50,8 @@ const REPO = "https://github.com/jiteeshghodke456-del/dakshin/blob/main/";
 const STAGES = [
   { t: "Satellite truth", s: "NOAA/NSIDC passive-microwave ice concentration", tag: "pre",
     what: "Downloads the daily sea-ice concentration record measured by satellite microwave radiometers. This is the ground truth the model learns to match and is scored against.",
-    input: "NOAA/NSIDC Sea Ice Concentration CDR, G02202 version 6. 25 km polar stereographic grid, 332 × 316 cells. No login needed.",
-    output: "Daily NetCDF files for 2018–2020 (1,096 files, zero failed), each with a concentration, a quality flag and a per-pixel standard deviation.",
+    input: "NOAA/NSIDC Sea Ice Concentration CDR, G02202 version 6. 25 km polar stereographic grid, {NSIDC_GRID} cells. No login needed.",
+    output: "Daily NetCDF files for 2018–2020 ({NSIDC_FILES} files, zero failed), each with a concentration, a quality flag and a per-pixel standard deviation.",
     why: "Passive microwave sees through cloud and polar night, which optical satellites cannot. The CDR is a long, consistent climate record, so a model trained on it is trained on one instrument family, not a patchwork.",
     files: ["dakshin/download_nsidc.py"],
     here: "Not downloaded by this site. Its results appear on the Evidence page." },
@@ -77,7 +77,7 @@ const STAGES = [
     files: ["dakshin/grid.py", "dakshin/features.py", "dakshin/build_dataset.py"],
     here: "Run beforehand on Kaggle." },
   { t: "Bias-correction model", s: "Residual U-Net", tag: "off",
-    what: "A small convolutional network (1.93 million parameters) predicts the correction to add to the physics model's ice field, not the field itself. Corrected ice = background + predicted correction, clipped to 0–1.",
+    what: "A small convolutional network ({UNET_PARAMS} parameters) predicts the correction to add to the physics model's ice field, not the field itself. Corrected ice = background + predicted correction, clipped to 0–1.",
     input: "The 12-channel stack for a given start day and lead time.",
     output: "A corrected concentration map for 1, 3, 5 or 7 days ahead.",
     why: "Predicting the residual means an untrained or unsure model falls back to the physics forecast instead of to nonsense. A U-Net keeps fine spatial detail through skip connections, which matters at the ice edge. It is cheap enough to train on a free Kaggle T4 GPU. Its score is an upper bound for now, because the training background was a reanalysis.",
@@ -128,6 +128,11 @@ const STAGES = [
 ];
 const TAG = { live: ["live", "Live here"], pre: ["pre", "Run beforehand"], off: ["off", "Not in this demo"] };
 const [meta, stat, lay] = await Promise.all(["data/meta.json", "data/static.json", "data/layers.json"].map((u) => fetch(u).then((r) => r.json())));
+const FIG = { NSIDC_GRID: stat.figures.nsidc_grid.value,
+              NSIDC_FILES: stat.qa_audit.archive.files.toLocaleString("en-IN" === navigator.language ? "en-IN" : "en-GB"),
+              UNET_PARAMS: stat.figures.unet_params.value.toLocaleString("en-GB") };
+for (const st of STAGES) for (const k of ["input", "output", "what"])
+  if (st[k]) st[k] = st[k].replace(/\{(NSIDC_GRID|NSIDC_FILES|UNET_PARAMS)\}/g, (m, g) => FIG[g]);
 const fmt = (iso) => new Date(iso + "T00:00:00Z").toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric", timeZone: "UTC" });
 const fill = (t) => t
   .replace("{CYCLES}", `${meta.cycles.length} cycles on this site, ${fmt(meta.cycles[0].cycle)} to ${fmt(meta.cycles.at(-1).cycle)}.`)

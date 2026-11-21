@@ -79,7 +79,11 @@ for f in files:
     blob = sic_u8.tobytes() + thk_u8.tobytes() + i8(u).tobytes() + i8(v).tobytes()
     (OUT / "cycles" / f"{cyc}.bin").write_bytes(blob)
 
-    cycles.append({"cycle": cyc, "leads": len(times), "valid": times, "bytes": len(blob)})
+    # A stale file (KNOWN_STALE.md) is a copy of the previous day's forecast
+    # with its first day cut off: 9 steps, first valid day != the cycle date.
+    stale = len(times) != 10 or times[0] != cyc
+    cycles.append({"cycle": cyc, "leads": len(times), "valid": times,
+                   "bytes": len(blob), **({"stale": True} if stale else {})})
     analyses[cyc] = sic[0]
     fc_store[cyc] = sic
     print(cyc, len(times), len(blob))
@@ -284,6 +288,14 @@ static = {
     "regret2019": J("route_regret.json"),
     "vessels2019": J("vessel_comparison.json"),
     "qa_audit": J("ice_quality_audit.json"),
+    # Single-sourced figures the pipeline page quotes. Constants carry the
+    # source-repo file that asserts them, so the page never types a number.
+    "figures": {
+        "nsidc_grid": {"value": "332 \u00d7 316",
+                       "source": "docs/PROTOTYPE_README.md (verified from a real NSIDC file)"},
+        "unet_params": {"value": 1929601,
+                        "source": "dakshin/test_model_io.py asserts this count on every checkpoint"},
+    },
     # new real-data products; each is None (and listed in "missing") if its file is absent
     "hindcast_real": with_src(J_opt("realforecast_hindcast.json"), "dakshin/figures/realforecast_hindcast.json"),
     "resolution": with_src(J_opt("resolution_study.json"), "dakshin/figures/resolution_study.json"),
