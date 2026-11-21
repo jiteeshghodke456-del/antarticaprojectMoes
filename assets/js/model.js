@@ -1,5 +1,5 @@
 // Decision logic for the bridge demo, ported from the Python in
-// sih26059-antarctic-navigation. Each block names the file it follows.
+// the Dakshin source repo. Each block names the file it follows.
 // Nothing here is tuned for the demo: thresholds and tables are copied.
 
 // ---------------------------------------------------------------------------
@@ -229,41 +229,83 @@ export function band(sic, stage, clsLo = "IA", clsHi = "PC4") {
 
 // ---------------------------------------------------------------------------
 // Nine decision gates and route health  (dakshin/gates.py, dakshin/decision.py)
+// Limits and fixed reason strings are NOT typed here: they arrive in
+// data/static.json gate_rules, read from gates.py by tools/build_data.py.
+// The wording below mirrors the Python f-strings so the two read the same.
 // ---------------------------------------------------------------------------
-export const MARGINAL_BAND_PCT = 7.4; // one median CDR retrieval std-dev across 70-90% ice
-export const BLOCKED_ON = {
-  capability: "Polar Ship Certificate and PWOM for IMO 8723426",
-  chart: "IHO ENC / GEBCO bathymetry loaded into the routing grid",
-  weather: "ERA5 or CMEMS wind, wave and visibility fields over the corridor",
-  traffic: "AIS feed or terrestrial/satellite traffic picture",
-  communications: "GMDSS / satcom coverage and link-budget model for the corridor",
-  execution: "live bridge sensor feed (GPS, radar, ice observation)",
-};
 export const GATE_ORDER = ["capability", "chart", "ice", "weather", "traffic", "logistics", "communications", "contingency", "execution"];
 
-export function evaluateGates({ route, iceLimitPct, destName, destReachable, nAlternatives }) {
-  const G = {};
-  for (const k of ["capability", "chart", "weather", "traffic", "communications", "execution"]) {
-    G[k] = { state: "UNKNOWN", reason: `No evidence held. Needs ${BLOCKED_ON[k]}.` };
-  }
-  G.capability.reason = `Ice limit and hull strength are not certificated for this ship. Needs ${BLOCKED_ON.capability}.`;
-  G.chart.reason = `No bathymetry in the routing grid, so the 20 m minimum-depth rule has nothing to act on. Needs ${BLOCKED_ON.chart}.`;
+const pyFloat = (x) => (Number.isInteger(x) ? x.toFixed(1) : String(x));   // Python str(float)
+const unknown = (R, gate) => ({ state: "UNKNOWN", reason: `Not evaluated — needs ${R.BLOCKED_ON[gate]}` });
 
+// gates.chart_gate with leg_depths_m. legDepths: metres, positive down, null outside coverage.
+export function chartGate(R, legDepths) {
+  const min = R.vessel.min_depth_m;
+  if (!legDepths) return { state: "MARGINAL", reason: R.CHART_NOT_ENC };   // bathymetry is loaded, no route to check
+  const known = legDepths.map((d, k) => [k, d]).filter(([, d]) => d !== null);
+  const shallow = known.filter(([, d]) => d < min);
+  const n = legDepths.length, nUnknown = n - known.length;
+  if (shallow.length) {
+    const [k, d] = shallow.reduce((a, b) => (b[1] < a[1] ? b : a));
+    return { state: "FAIL", atLeg: k, reason: `${shallow.length} route point(s) shallower than the vessel's ${min} m minimum depth; shallowest ${d.toFixed(0)} m at leg ${k}` };
+  }
+  if (!known.length) return { state: "UNKNOWN", reason: "No point of the route lies inside the bathymetry coverage" };
+  let reason = R.CHART_NOT_ENC;
+  if (nUnknown) reason += ` ${nUnknown} of ${n} route points lie outside the IBCSO subset and were not depth-checked.`;
+  return { state: "MARGINAL", reason };
+}
+
+// gates.weather_gate
+export function weatherGate(R, hs, wind) {
+  if (hs == null && wind == null) return { ...unknown(R, "weather"), unassessed: [] };
+  const parts = []; let state = "PASS";
+  const lim = R.MAX_WAVE_M, band = R.WAVE_MARGINAL_BAND_M;
+  if (hs != null) {
+    if (hs > lim) { state = "FAIL"; parts.push(`waves ${hs.toFixed(2)} m exceed the assumed ${pyFloat(lim)} m limit`); }
+    else if (hs > lim - band) { state = "MARGINAL"; parts.push(`waves ${hs.toFixed(2)} m within ${pyFloat(band)} m of the assumed limit`); }
+    else parts.push(`waves ${hs.toFixed(2)} m under the assumed ${pyFloat(lim)} m limit`);
+  }
+  if (wind != null) {
+    if (wind >= R.WIND_FAIL_MS) { state = "FAIL"; parts.push(`wind ${wind.toFixed(1)} m/s at or above Beaufort 8`); }
+    else if (wind >= R.WIND_MARGINAL_MS) { if (state !== "FAIL") state = "MARGINAL"; parts.push(`wind ${wind.toFixed(1)} m/s in Beaufort 7`); }
+    else parts.push(`wind ${wind.toFixed(1)} m/s below Beaufort 7`);
+  }
+  const missing = [["waves", hs], ["wind", wind]].filter(([, v]) => v == null).map(([k]) => k);
+  return {
+    state,
+    reason: parts.join("; ") + " — limits are assumptions, not this hull's PWOM; visibility not assessed"
+      + (missing.length ? `; no data for ${missing.join(", ")}` : ""),
+    unassessed: ["visibility", ...missing],
+  };
+}
+
+export function evaluateGates({ R, route, iceLimitPct, destName, destReachable, nAlternatives, legDepths = null, worstHs = null, worstWind = null }) {
+  const G = {};
+  G.capability = { state: "UNKNOWN", reason: `The mesh force limit is an uncalibrated value borrowed from another vessel. Needs ${R.BLOCKED_ON.capability}` };
+  G.chart = R.depth ? chartGate(R, legDepths) : unknown(R, "chart");
+  for (const k of ["communications", "execution"]) G[k] = unknown(R, k);
+  // No live AIS feed exists for this site, so gates.traffic_gate(feed_live=False).
+  G.traffic = { ...unknown(R, "traffic"), chips: ["no live AIS feed"] };
+  G.weather = weatherGate(R, worstHs, worstWind);
+
+  const assumed = " — note this limit is an assumption, not a certificated one";
+  const pts = (m) => (Math.round(m) === 1 ? "point" : "points");
   if (!route) {
-    G.ice = { state: "FAIL", reason: `No route keeps under the ${iceLimitPct}% working limit for this departure.` };
+    G.ice = { state: "FAIL", reason: `No route keeps under the ${iceLimitPct}% working limit for this departure${assumed}` };
   } else {
     const worst = route.worst * 100, margin = iceLimitPct - worst;
-    if (route.overKm > 0) G.ice = { state: "FAIL", reason: `Forecast ice on arrival is above ${iceLimitPct}% for ${route.overKm.toFixed(0)} km of this track.`, failsInHours: route.firstOverHours };
-    else if (margin <= MARGINAL_BAND_PCT) G.ice = { state: "MARGINAL", reason: `Ice reaches ${worst.toFixed(0)}%, within ${margin.toFixed(0)} points of the ${iceLimitPct}% limit. That is inside the retrieval's own uncertainty, and the limit itself is an assumption.` };
-    else G.ice = { state: "PASS", reason: `Ice peaks at ${worst.toFixed(0)}%, ${margin.toFixed(0)} points below the working limit.` };
+    if (route.overKm > 0) G.ice = { state: "FAIL", reason: `Forecast ice on arrival is above ${iceLimitPct}% for ${route.overKm.toFixed(0)} km of this track${assumed}`, failsInHours: route.firstOverHours };
+    else if (margin <= R.MARGINAL_BAND_PCT) G.ice = { state: "MARGINAL", reason: `Ice reaches ${worst.toFixed(0)}%, within ${margin.toFixed(0)} ${pts(margin)} of the ${iceLimitPct}% working limit — inside the retrieval's own uncertainty, so the margin is not measurable${assumed}` };
+    else G.ice = { state: "PASS", reason: `Ice peaks at ${worst.toFixed(0)}%, ${margin.toFixed(0)} ${pts(margin)} below the working limit` };
   }
   G.logistics = destReachable
-    ? { state: "PASS", reason: `${destName} is reachable on this forecast.` }
-    : { state: "FAIL", reason: `${destName} is not reachable for this ship on this forecast.` };
-  G.contingency = nAlternatives >= 2 ? { state: "PASS", reason: `${nAlternatives} fallback corridors solve at tighter ice limits.` }
-    : nAlternatives === 1 ? { state: "MARGINAL", reason: "Only one fallback corridor solves. Thin cover if the primary closes." }
-    : { state: "FAIL", reason: "No fallback corridor solves at a tighter ice limit." };
+    ? { state: "PASS", reason: `${destName} is reachable on this forecast` }
+    : { state: "FAIL", reason: `${destName} is not reachable for this ship on this forecast` };
+  G.contingency = nAlternatives >= 2 ? { state: "PASS", reason: `${nAlternatives} alternatives available (tighter ice limits that still solve)` }
+    : nAlternatives === 1 ? { state: "MARGINAL", reason: "Only one alternative corridor — thin cover if the primary closes" }
+    : { state: "FAIL", reason: "No alternative corridor has been computed; there is no fallback plan" };
 
+  // decision.route_health: worst gate wins; FAIL ahead of the ship is CRITICAL, FAIL now is INVALID; UNKNOWN caps at DEGRADED.
   const rank = { VALID: 0, DEGRADED: 1, CRITICAL: 2, INVALID: 3 };
   let health = "VALID", binding = null;
   const levelOf = (g) => g.state === "FAIL" ? ((g.failsInHours || 0) > 0 ? "CRITICAL" : "INVALID")

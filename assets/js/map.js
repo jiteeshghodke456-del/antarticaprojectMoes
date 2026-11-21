@@ -67,8 +67,8 @@ export function gridSampler(g, values, colour, landColour = LAND) {
   return (lat, lon) => {
     const i = Math.round((lat - g.lat0) / g.dlat), j = Math.round((lon - g.lon0) / g.dlon);
     if (i < 0 || j < 0 || i >= g.ny || j >= g.nx) return null;
-    const v = values[i * g.nx + j];
-    return v === 255 ? landColour : colour(v);
+    const k = i * g.nx + j, v = values[k];
+    return v === 255 ? landColour : colour(v, k);
   };
 }
 
@@ -127,7 +127,7 @@ export function drawMarker(ctx, proj, lat, lon, label, { shape = "dot", colour =
 
 export function drawBerg(ctx, proj, b, near) {
   const [x, y] = proj.fwd(b.lat, b.lon);
-  const r = Math.max(3, Math.min(9, 2 + b.len_nm / 4));
+  const r = Math.max(3, Math.min(9, 2 + b.len_nm / 4));  // marker size from USNIC long axis, nm
   ctx.save(); ctx.fillStyle = near ? "#b3261e" : "#ffffff"; ctx.strokeStyle = "#12304d"; ctx.lineWidth = 1.4;
   ctx.beginPath(); ctx.moveTo(x, y - r); ctx.lineTo(x + r, y); ctx.lineTo(x, y + r); ctx.lineTo(x - r, y); ctx.closePath(); ctx.fill(); ctx.stroke();
   ctx.font = "11.5px 'Atkinson Hyperlegible', sans-serif"; ctx.lineWidth = 3; ctx.strokeStyle = "rgba(255,255,255,0.9)";
@@ -152,5 +152,92 @@ export function drawArrows(ctx, proj, g, U, V, lead) {
     ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x1 - 4 * Math.cos(a - 0.5), y1 - 4 * Math.sin(a - 0.5));
     ctx.moveTo(x1, y1); ctx.lineTo(x1 - 4 * Math.cos(a + 0.5), y1 - 4 * Math.sin(a + 0.5)); ctx.stroke();
   }
+  ctx.restore();
+}
+
+// ---------------------------------------------------------------- weather and depth layers
+// Wave ramp. Bins are tied to the weather gate so the chart and the gate say
+// the same thing: blues below the marginal band, amber inside it, reds above
+// the assumed limit. limit and band come from data/static.json gate_rules.
+export function waveBins(limit, band) {
+  return [
+    { max: 1, rgb: [214, 230, 244], label: "<1 m" },
+    { max: 2, rgb: [150, 190, 228], label: "1–2" },
+    { max: limit - band, rgb: [84, 132, 196], label: `2–${limit - band}`, dark: true },
+    { max: limit, rgb: [232, 176, 72], label: `${limit - band}–${limit}` },
+    { max: limit + 1, rgb: [206, 84, 62], label: `${limit}–${limit + 1}`, dark: true, limit: true },
+    { max: limit + 2, rgb: [158, 40, 40], label: `${limit + 1}–${limit + 2}`, dark: true },
+    { max: Infinity, rgb: [96, 20, 34], label: `>${limit + 2} m`, dark: true },
+  ];
+}
+export const WAVE_ICE = [241, 244, 246];   // under ice the wave model writes no value
+export function waveColour(bins, m) { for (const b of bins) if (m <= b.max) return b.rgb; return bins[bins.length - 1].rgb; }
+
+// Arrows from a regular lat/lon grid of int8 components. scale: units per value (m/s per step).
+export function drawVectors(ctx, proj, g, U, V, lead, { scale = 1, stride = 1, colour = "rgba(90,42,130,0.85)", minSpeed = 0, lenPerUnit = 0.035, cap = 40, nan = -128, skip = null } = {}) {
+  const n = g.ny * g.nx, off = lead * n;
+  ctx.save(); ctx.strokeStyle = colour; ctx.lineWidth = 1.2; ctx.lineCap = "round";
+  for (let i = 0; i < g.ny; i += stride) for (let j = 0; j < g.nx; j += stride) {
+    const a = U[off + i * g.nx + j], b = V[off + i * g.nx + j];
+    if (a === nan || b === nan) continue;
+    const u = a * scale, v = b * scale, sp = Math.hypot(u, v); if (sp < minSpeed || sp === 0) continue;
+    const lat = g.lat0 + g.dlat * i, lon = g.lon0 + g.dlon * j;
+    if (skip && skip(lat, lon)) continue;
+    const [x0, y0] = proj.fwd(lat, lon);
+    const k = lenPerUnit * Math.min(sp, cap) / sp;
+    const [x1, y1] = proj.fwd(lat + v * k, lon + (u * k) / Math.cos(lat * Math.PI / 180));
+    ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+    const t = Math.atan2(y1 - y0, x1 - x0);
+    ctx.beginPath(); ctx.moveTo(x1 - 4.5 * Math.cos(t - 0.5), y1 - 4.5 * Math.sin(t - 0.5)); ctx.lineTo(x1, y1);
+    ctx.lineTo(x1 - 4.5 * Math.cos(t + 0.5), y1 - 4.5 * Math.sin(t + 0.5)); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+let hatchPattern = null;
+function hatch(ctx) {
+  if (hatchPattern) return hatchPattern;
+  const c = document.createElement("canvas"); c.width = c.height = 6;
+  const h = c.getContext("2d"); h.strokeStyle = "rgba(91,70,48,0.85)"; h.lineWidth = 1.2;
+  h.beginPath(); h.moveTo(0, 6); h.lineTo(6, 0); h.moveTo(-1, 1); h.lineTo(1, -1); h.moveTo(5, 7); h.lineTo(7, 5); h.stroke();
+  return (hatchPattern = ctx.createPattern(c, "repeat"));
+}
+// Hatch every depth block whose shallowest point is under minDepth (land blocks skipped: the coast is drawn already).
+export function drawShallow(ctx, proj, g, D, minDepth, LAND = 32767) {
+  ctx.save(); ctx.fillStyle = hatch(ctx); ctx.beginPath();
+  const hy = g.dlat / 2, hx = g.dlon / 2;
+  for (let i = 0; i < g.ny; i++) for (let j = 0; j < g.nx; j++) {
+    const e = D[i * g.nx + j]; if (e === LAND || e <= -minDepth) continue;
+    const la = g.lat0 + g.dlat * i, lo = g.lon0 + g.dlon * j;
+    const p = [[la - hy, lo - hx], [la - hy, lo + hx], [la + hy, lo + hx], [la + hy, lo - hx]].map(([a, b]) => proj.fwd(a, b));
+    ctx.moveTo(p[0][0], p[0][1]); for (let k = 1; k < 4; k++) ctx.lineTo(p[k][0], p[k][1]); ctx.closePath();
+  }
+  ctx.fill(); ctx.restore();
+}
+export function drawIsobaths(ctx, proj, lines, levels) {
+  ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
+  for (const pass of ["halo", "line"]) for (const L of lines) {
+    const w = L.m === levels[0] ? 1.6 : L.m === levels[1] ? 1.3 : 1;
+    ctx.setLineDash(L.m === levels[levels.length - 1] ? [5, 4] : []);
+    ctx.lineWidth = pass === "halo" ? w + 2 : w;
+    ctx.strokeStyle = pass === "halo" ? "rgba(255,255,255,0.55)" : "rgba(18,48,77,0.9)";
+    ctx.beginPath();
+    L.c.forEach(([lon, lat], k) => { const [x, y] = proj.fwd(lat, lon); k ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// A circle of radiusKm around a point, as a ring of lat/lon points so the
+// projection bends it correctly.
+export function drawRing(ctx, proj, lat, lon, radiusKm, { stroke = "rgba(18,48,77,0.85)", fill = "rgba(18,48,77,0.07)" } = {}) {
+  if (!(radiusKm > 0)) return;
+  const dLat = radiusKm / 111.32, dLon = radiusKm / (111.32 * Math.cos(lat * Math.PI / 180));
+  ctx.save(); ctx.beginPath();
+  for (let k = 0; k <= 48; k++) {
+    const a = (k / 48) * Math.PI * 2; const [x, y] = proj.fwd(lat + dLat * Math.cos(a), lon + dLon * Math.sin(a));
+    k ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  }
+  ctx.closePath(); ctx.fillStyle = fill; ctx.fill(); ctx.setLineDash([4, 3]); ctx.strokeStyle = stroke; ctx.lineWidth = 1.2; ctx.stroke();
   ctx.restore();
 }
