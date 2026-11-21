@@ -95,7 +95,7 @@ It helps to hold two pictures in your head, because the repo contains both.
 
 The first is the **final product design**. A shore tier with plenty of bandwidth and computing power downloads data, trains models and builds a small "voyage pack" each night. A vessel tier, a laptop on the bridge with no internet, receives the pack and runs the router locally. Most of this is described in `docs/ARCHITECTURE.md` and is design, not code.
 
-The second is the **ISIH prototype**, which lives in the `dakshin/` folder and is what actually runs. It is deliberately kept separate from the final product so the two are never confused. The prototype shares exactly one thing with the final design: the U-Net file.
+The second is the **September prototype**, which lives in the `dakshin/` folder and is what actually runs. It is deliberately kept separate from the final product so the two are never confused. The prototype shares exactly one thing with the final design: the U-Net file.
 
 When you talk to the professor, say which of the two you mean. Mixing them up is the fastest way to say something false.
 
@@ -642,7 +642,7 @@ Be careful about the wording "desktop app". What the repo actually runs is a loc
 
 The team's data strategy is to use sources that work today with no payment, and to treat any source that needs a login as acceptable only if the account is free. Every source in section 5.1 is free. The strategy document also says to evaluate Indian sources objectively against foreign ones, and not to assume an Indian service covers Antarctica just because the organisation is Indian. It found NCPOR's data centre real and useful as validation ground truth, but not a substitute for the global products.
 
-### 9.11 Why the ISIH prototype is kept separate from the final product
+### 9.11 Why the September prototype is kept separate from the final product
 
 So the two are never confused, in the repo, in the checkpoints or in the numbers quoted to judges. The prototype uses a smaller model, a reanalysis background and no uncertainty, and the final product is meant to use a five-member ensemble, the live forecast and calibration. If a prototype number were quoted as a product number, the leakage caveat and the missing uncertainty would be hidden. The shared U-Net file is deliberate: the architecture is verified once, so the prototype demonstrates the production design at smaller scale.
 
