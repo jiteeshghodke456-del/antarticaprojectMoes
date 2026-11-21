@@ -702,6 +702,19 @@ function rememberDisclosures() {
   });
 }
 
+// Intro: end it once the first chart is drawn, but never before the mark has
+// drawn (1.1 s) and never after 1.5 s from navigation start; with the 0.4 s
+// fade and slide the whole sequence ends before 2 s. (performance.now() is
+// measured from navigation start.)
+function endIntro() {
+  const root = document.documentElement;
+  if (!root.classList.contains("intro-on") || root.classList.contains("intro-done")) return;
+  root.classList.add("intro-done");
+  root.dataset.introDoneMs = Math.round(performance.now());
+  setTimeout(() => $("#intro")?.remove(), 450);
+}
+setTimeout(endIntro, Math.max(0, 1500 - performance.now()));
+
 async function main() {
   const json = (p) => fetch(p).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r.json(); });
   [S.meta, S.stat, S.lay] = await Promise.all([json("data/meta.json"), json("data/static.json"), json("data/layers.json")]);
@@ -807,8 +820,10 @@ async function main() {
   $("#zoomReset").addEventListener("click", () => view.reset());
   document.addEventListener("toggle", () => { if (current) { baseKey = ""; drawChart(current); } }, true);
   await refresh();
+  setTimeout(endIntro, Math.max(0, 1100 - performance.now()));
 }
 main().catch((e) => {
+  endIntro();
   const el = $("#finding"); el.hidden = false; el.className = "ribbon";
   el.innerHTML = `<div class="verdict">Data did not load</div><p>${e.message}. Serve the folder over HTTP (python -m http.server) rather than opening the file directly.</p>`;
   console.error(e);

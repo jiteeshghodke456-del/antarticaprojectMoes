@@ -543,3 +543,31 @@ details.legendcards > summary { display: inline-flex; background: var(--panel); 
 details.legendcards > summary::after { border-color: var(--ink); }
 details.legendcards .cards { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
 .brandbar .tabs a { font-size: var(--t-xs); padding: 5px 8px; }
+
+/* =====================================================================
+   Intro (Bridge, first visit only): the roundel draws in, the name fades
+   in, and the panels slide in once the data is ready. Under 2 s in total.
+   ===================================================================== */
+.intro { display: none; }
+html.intro-on .intro {
+  position: fixed; inset: 0; z-index: 100; background: var(--bg);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: var(--s-5);
+  transition: opacity 0.35s ease;
+}
+html.intro-on .intro-mark .draw { stroke-dasharray: 1; stroke-dashoffset: 1; animation: mark-draw 0.8s ease-out forwards; }
+html.intro-on .intro-mark .draw.d2 { animation-delay: 0.15s; }
+html.intro-on .intro-mark .draw.d3 { animation-delay: 0.3s; }
+html.intro-on .intro-mark .needle { opacity: 0; animation: fade-in 0.35s ease 0.75s forwards; }
+.intro-title { margin: 0; color: var(--ink); font-size: var(--t-sm); letter-spacing: 0.14em; font-weight: 700; opacity: 0; text-align: center; padding: 0 var(--s-4); }
+html.intro-on .intro-title { animation: fade-in 0.45s ease 0.55s forwards; }
+html.intro-on.intro-done .intro { opacity: 0; pointer-events: none; }
+html.intro-on .brandbar, html.intro-on .panel.left { transform: translateX(-24px); opacity: 0; }
+html.intro-on .panel.right { transform: translateX(24px); opacity: 0; }
+html.intro-on .ribbon, html.intro-on .mapctl, html.intro-on .attribution, html.intro-on .legendcards { opacity: 0; }
+html.intro-on.intro-done .brandbar, html.intro-on.intro-done .panel, html.intro-on.intro-done .ribbon,
+html.intro-on.intro-done .mapctl, html.intro-on.intro-done .attribution, html.intro-on.intro-done .legendcards {
+  transform: none; opacity: 1; transition: transform 0.4s ease, opacity 0.4s ease;
+}
+@keyframes mark-draw { to { stroke-dashoffset: 0; } }
+@keyframes fade-in { to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { html.intro-on .intro { display: none; } }
