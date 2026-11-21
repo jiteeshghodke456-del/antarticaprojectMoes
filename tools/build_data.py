@@ -454,6 +454,10 @@ if png.exists():
     shutil.copyfile(png, OUT.parent / "assets" / "img" / "resolution_study.png")
 else:
     missing.append({"layer": "resolution_study.png", "reason": "dakshin/figures/resolution_study.png not found"})
+# Research-grade layers (full-resolution latest cycle, bathymetry, verification); see tools/research_layers.py.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import research_layers
+layers["research"] = research_layers.build(SRC, OUT, cycles, missing)
 (OUT / "layers.json").write_text(json.dumps(layers, separators=(",", ":")))
 
 (OUT / "meta.json").write_text(json.dumps(meta, separators=(",", ":")))
