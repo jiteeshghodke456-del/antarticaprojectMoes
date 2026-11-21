@@ -214,7 +214,41 @@ def build(SRC: Path, OUT: Path, cycles: list[dict], missing: list[dict]) -> dict
                         "caveat": at.get("caveat", ""), "provenance": "data/bathymetry/ibcso_v2_corridor_0p05.nc"}
 
     out["verif"] = _verification(SRC, R, cycles, missing)
+    out["analysis_currents"] = _analysis_currents(SRC, R, cycles, out["verif"], missing)
     return out
+
+
+# ==================================================================== analysis currents
+def _analysis_currents(SRC: Path, R: Path, cycles: list[dict], verif: dict | None, missing: list[dict]) -> dict | None:
+    """Daily ANALYSIS surface currents for the days of the latest fully
+    verifiable cycle, so streaklines can share a chart with the satellite
+    comparison. These are the model's best estimate for each day after the
+    fact, not the forecast that cycle issued; the page says so."""
+    cyc = (verif or {}).get("latest_full_cycle")
+    if not cyc:
+        missing.append({"layer": "analysis_currents", "reason": "no fully verifiable cycle"})
+        return None
+    valid = next(c["valid"] for c in cycles if c["cycle"] == cyc)
+    files = [SRC / "data" / "cmems_cur_analysis" / f"cmems_cur_analysis_{d}.nc" for d in valid]
+    gone = [f.name for f in files if not f.exists()]
+    if gone:
+        missing.append({"layer": "analysis_currents", "reason": f"missing data/cmems_cur_analysis files: {', '.join(gone)}"})
+        return None
+    us, vs = [], []
+    for f in files:
+        ds = xr.open_dataset(f)
+        lat, lon = ds.latitude.values, ds.longitude.values
+        us.append(ds.uo.values[0, 0].astype("f8")); vs.append(ds.vo.values[0, 0].astype("f8"))
+        ds.close()
+    D = R / cyc
+    D.mkdir(exist_ok=True)
+    name, n = _write(D, "cur_analysis.bin", _enc(np.stack(us), 0.001, np.int16, -32768), _enc(np.stack(vs), 0.001, np.int16, -32768))
+    return {"cycle": cyc, "grid": _grid(lat, lon), "leads": len(valid), "valid": valid, "file": f"{cyc}/{name}", "bytes": n,
+            "dtype": "int16", "scale": 0.001, "nodata": -32768, "units": "m/s", "components": 2,
+            "variable": "uo, vo at 0.494 m (u block then v block), daily mean ANALYSIS for each valid day",
+            "label": "analysis (reanalysis-style), not the forecast",
+            "source": "CMEMS GLOBAL_ANALYSISFORECAST_PHY_001_024 currents, daily analysis, 1/12 deg", "licence": CMEMS_LICENCE,
+            "provenance": "data/cmems_cur_analysis/cmems_cur_analysis_<date>.nc"}
 
 
 # ==================================================================== verification

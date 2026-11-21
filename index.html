@@ -70,7 +70,7 @@
       <label class="row"><input type="radio" name="field" value="sic" checked><i class="thumb t-sic" aria-hidden="true"></i><span class="txt">Ice concentration<small id="sub-sic">CMEMS, 1/12°</small><span class="hint" id="hint-sic"></span></span></label>
       <div class="subctl seg" role="group" aria-label="Concentration colours"><button data-sicmode="wmo" aria-pressed="true">WMO code</button><button data-sicmode="cont" aria-pressed="false">Continuous</button></div>
       <label class="row"><input type="radio" name="field" value="thk"><i class="thumb t-thk" aria-hidden="true"></i><span class="txt">Ice thickness<small>Sea ice: CMEMS sithick, m</small><span class="hint" id="hint-thk"></span></span></label>
-      <label class="row"><input type="radio" name="field" value="cur"><i class="thumb t-cur" aria-hidden="true"></i><span class="txt">Current speed<small>Ocean: CMEMS surface uo/vo</small><span class="hint" id="hint-cur"></span></span></label>
+      <label class="row"><input type="radio" name="field" value="cur"><i class="thumb t-cur" aria-hidden="true"></i><span class="txt">Current speed<small id="sub-cur">Ocean: CMEMS surface uo/vo</small><span class="hint" id="hint-cur"></span></span></label>
       <label class="row"><input type="radio" name="field" value="sst"><i class="thumb t-sst" aria-hidden="true"></i><span class="txt">Sea-surface temperature<small>Ocean: CMEMS thetao, °C</small><span class="hint" id="hint-sst"></span></span></label>
       <label class="row"><input type="radio" name="field" value="wav"><i class="thumb t-wav" aria-hidden="true"></i><span class="txt">Wave height<small>Ocean: daily max, CMEMS waves</small><span class="hint" id="hint-wav"></span></span></label>
       <label class="row"><input type="radio" name="field" value="innov"><i class="thumb t-innov" aria-hidden="true"></i><span class="txt">Innovation, model − satellite<small>Verification: 25 km satellite grid</small></span></label>
@@ -83,7 +83,7 @@
     </details>
     <details class="disc rows" data-key="ov-ocean">
       <summary>Ocean overlays</summary>
-      <label class="row"><input type="checkbox" role="switch" data-layer="currents"><i class="thumb t-stream" aria-hidden="true"></i><span class="txt">Current streaklines<small>7 days of flow at 1×, shorter as you zoom</small><span class="hint" id="hint-currents"></span></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="currents"><i class="thumb t-stream" aria-hidden="true"></i><span class="txt">Current streaklines<small id="sub-currents">7 days of flow at 1×, shorter as you zoom</small><span class="hint" id="hint-currents"></span></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="wavedir"><i class="thumb t-wavedir" aria-hidden="true"></i><span class="txt">Wave direction<small>At the daily peak (VMDR)</small><span class="hint" id="hint-wavedir"></span></span></label>
     </details>
     <details class="disc rows" data-key="ov-atmos">
