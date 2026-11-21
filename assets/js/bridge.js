@@ -423,6 +423,8 @@ function renderGates() {
   const { gates, health, binding } = S.result.decision;
   $("#healthState").textContent = health; $("#healthState").className = "state state-" + health;
   $("#healthWhy").textContent = `set by the ${binding} gate`;
+  const bg = gates[binding];
+  $("#binding").innerHTML = `<div class="gline"><span class="gname">${binding}</span><span class="pill ${bg.state}">${bg.state}</span></div><p class="reason">${bg.reason}</p>`;
   const wx = S.result.wx, extra = {};
   if (wx.filled) extra.weather = [`${wx.filled} leg${wx.filled > 1 ? "s" : ""} in open water with no wave value took the day's box-wide max (the source rule); measured worst on the track <b>${wx.hsMeasured?.toFixed(1) ?? "none"} m</b>`];
   if (!current.wx) extra.weather = [`no wave or wind file for this cycle; archived for ${fmtDate(S.lay.cycle, { day: "numeric", month: "short" })} only`];
@@ -609,7 +611,7 @@ function renderCredits() {
     L.bergs && "US National Ice Center", "Natural Earth"].filter(Boolean);
   $("#attribution").innerHTML = `<a href="#credits">Credits</a> | ` + short.join(" | ");
   $("#attribution").title = short.join(" | ");
-  $("#credits").innerHTML = `<h3>Data and credits</h3>${parts.map((t) => `<p>${t}</p>`).join("")}
+  $("#credits").innerHTML = `${parts.map((t) => `<p>${t}</p>`).join("")}
     <p>Routing, POLARIS and the gates run in your browser, ported from the project's Python. Nothing on this page is simulated. Advisory only: not for navigation.</p>`;
 }
 
@@ -684,6 +686,22 @@ function inspect(f, lat, lon) {
   return rows.join("<br>") || "–";
 }
 
+// Progressive disclosure: every secondary section starts closed; whatever the
+// user opens or closes is remembered per section. Storage can be missing or
+// throw (private mode, blocked site data); the page then simply forgets.
+const UI_KEY = "dakshin.disclosure.v1";
+function rememberDisclosures() {
+  let ui = {};
+  try { ui = JSON.parse(localStorage.getItem(UI_KEY) || "{}") || {}; } catch { ui = {}; }
+  document.querySelectorAll("details.disc[data-key]").forEach((d) => {
+    if (typeof ui[d.dataset.key] === "boolean") d.open = ui[d.dataset.key];
+    d.addEventListener("toggle", () => {
+      ui[d.dataset.key] = d.open;
+      try { localStorage.setItem(UI_KEY, JSON.stringify(ui)); } catch { /* not remembered; still works */ }
+    });
+  });
+}
+
 async function main() {
   const json = (p) => fetch(p).then((r) => { if (!r.ok) throw new Error(`${p}: HTTP ${r.status}`); return r.json(); });
   [S.meta, S.stat, S.lay] = await Promise.all([json("data/meta.json"), json("data/static.json"), json("data/layers.json")]);
@@ -696,6 +714,11 @@ async function main() {
   document.querySelectorAll(".collapse").forEach((b) => b.addEventListener("click", () => setPanel(b.dataset.panel, b.getAttribute("aria-expanded") !== "true")));
   $("#scalenote").textContent = `South polar stereographic, centred on ${S.proj.lon0}°E. Scroll or pinch to zoom (1× to 8×), drag to pan, double-click to zoom in; keys + − 0. The graticule tightens as you zoom.`;
   renderFinding(); renderCredits();
+  rememberDisclosures();
+  $("#attribution").addEventListener("click", (e) => {
+    if (!e.target.closest('a[href="#credits"]')) return;
+    e.preventDefault(); setPanel("right", true); $("#creditsbox").open = true; $("#creditsbox").scrollIntoView({ block: "nearest" });
+  });
   $("#bergadv").textContent = S.lay.berg_tracks ? `Advisory: ${S.lay.berg_tracks.validation.replace(/^see berg_hindcast\.json\s*[—-]\s*/, "")}.` : "";
   view = createView({
     proj: S.proj, surface: $("#chartwrap"), stack: $("#stack"),

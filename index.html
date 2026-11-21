@@ -55,42 +55,46 @@
     <p class="resnote" id="resnote"></p>
 
     <fieldset class="rows">
-      <legend>Sea ice</legend>
+      <legend>Chart field</legend>
       <label class="row"><input type="radio" name="field" value="sic" checked><i class="thumb t-sic" aria-hidden="true"></i><span class="txt">Ice concentration<small id="sub-sic">CMEMS, 1/12°</small><span class="hint" id="hint-sic"></span></span></label>
       <div class="subctl seg" role="group" aria-label="Concentration colours"><button data-sicmode="wmo" aria-pressed="true">WMO code</button><button data-sicmode="cont" aria-pressed="false">Continuous</button></div>
-      <label class="row"><input type="radio" name="field" value="thk"><i class="thumb t-thk" aria-hidden="true"></i><span class="txt">Ice thickness<small>CMEMS sithick, metres</small><span class="hint" id="hint-thk"></span></span></label>
-      <label class="row"><input type="checkbox" role="switch" data-layer="idrift"><i class="thumb t-drift" aria-hidden="true"></i><span class="txt">Ice drift<small>CMEMS usi/vsi arrows</small><span class="hint" id="hint-idrift"></span></span></label>
-    </fieldset>
-    <fieldset class="rows">
-      <legend>Ocean</legend>
-      <label class="row"><input type="radio" name="field" value="cur"><i class="thumb t-cur" aria-hidden="true"></i><span class="txt">Current speed<small>CMEMS surface uo/vo</small><span class="hint" id="hint-cur"></span></span></label>
-      <label class="row"><input type="checkbox" role="switch" data-layer="currents"><i class="thumb t-stream" aria-hidden="true"></i><span class="txt">Current streaklines<small>7 days of flow at 1×, shorter as you zoom</small><span class="hint" id="hint-currents"></span></span></label>
-      <label class="row"><input type="radio" name="field" value="sst"><i class="thumb t-sst" aria-hidden="true"></i><span class="txt">Sea-surface temperature<small>CMEMS thetao, °C</small><span class="hint" id="hint-sst"></span></span></label>
-      <label class="row"><input type="radio" name="field" value="wav"><i class="thumb t-wav" aria-hidden="true"></i><span class="txt">Wave height<small>Daily max, CMEMS waves</small><span class="hint" id="hint-wav"></span></span></label>
-      <label class="row"><input type="checkbox" role="switch" data-layer="wavedir"><i class="thumb t-wavedir" aria-hidden="true"></i><span class="txt">Wave direction<small>At the daily peak (VMDR)</small><span class="hint" id="hint-wavedir"></span></span></label>
-    </fieldset>
-    <fieldset class="rows">
-      <legend>Atmosphere</legend>
-      <label class="row"><input type="checkbox" role="switch" data-layer="wind"><i class="thumb t-wind" aria-hidden="true"></i><span class="txt">Wind barbs<small>ECMWF IFS 10 m, knots</small><span class="hint" id="hint-wind"></span></span></label>
-      <div class="subctl seg" role="group" aria-label="Wind time within the day" id="windsteps"></div>
-    </fieldset>
-    <fieldset class="rows">
-      <legend>Seafloor</legend>
-      <label class="row"><input type="checkbox" role="switch" data-layer="depth"><i class="thumb t-depth" aria-hidden="true"></i><span class="txt">Bathymetry<small>IBCSO isobaths, tint, under 20 m hatch</small><span class="hint" id="hint-depth"></span></span></label>
-    </fieldset>
-    <fieldset class="rows">
-      <legend>Verification</legend>
-      <label class="row"><input type="checkbox" role="switch" data-layer="edges"><i class="thumb t-edges" aria-hidden="true"></i><span class="txt">Ice edge: satellite vs model<small>15% contours, NSIDC NRT vs CMEMS</small></span></label>
-      <label class="row"><input type="radio" name="field" value="innov"><i class="thumb t-innov" aria-hidden="true"></i><span class="txt">Innovation, model − satellite<small>On the 25 km satellite grid</small></span></label>
+      <label class="row"><input type="radio" name="field" value="thk"><i class="thumb t-thk" aria-hidden="true"></i><span class="txt">Ice thickness<small>Sea ice: CMEMS sithick, m</small><span class="hint" id="hint-thk"></span></span></label>
+      <label class="row"><input type="radio" name="field" value="cur"><i class="thumb t-cur" aria-hidden="true"></i><span class="txt">Current speed<small>Ocean: CMEMS surface uo/vo</small><span class="hint" id="hint-cur"></span></span></label>
+      <label class="row"><input type="radio" name="field" value="sst"><i class="thumb t-sst" aria-hidden="true"></i><span class="txt">Sea-surface temperature<small>Ocean: CMEMS thetao, °C</small><span class="hint" id="hint-sst"></span></span></label>
+      <label class="row"><input type="radio" name="field" value="wav"><i class="thumb t-wav" aria-hidden="true"></i><span class="txt">Wave height<small>Ocean: daily max, CMEMS waves</small><span class="hint" id="hint-wav"></span></span></label>
+      <label class="row"><input type="radio" name="field" value="innov"><i class="thumb t-innov" aria-hidden="true"></i><span class="txt">Innovation, model − satellite<small>Verification: 25 km satellite grid</small></span></label>
       <div class="verifnote" id="verifnote" hidden><p id="verifwhy"></p><button class="btn" id="verifJump">Go to the latest verifiable forecast</button></div>
     </fieldset>
-    <fieldset class="rows">
-      <legend>Navigation</legend>
+
+    <details class="disc rows" data-key="ov-ice">
+      <summary>Sea ice overlays</summary>
+      <label class="row"><input type="checkbox" role="switch" data-layer="idrift"><i class="thumb t-drift" aria-hidden="true"></i><span class="txt">Ice drift<small>CMEMS usi/vsi arrows</small><span class="hint" id="hint-idrift"></span></span></label>
+    </details>
+    <details class="disc rows" data-key="ov-ocean">
+      <summary>Ocean overlays</summary>
+      <label class="row"><input type="checkbox" role="switch" data-layer="currents"><i class="thumb t-stream" aria-hidden="true"></i><span class="txt">Current streaklines<small>7 days of flow at 1×, shorter as you zoom</small><span class="hint" id="hint-currents"></span></span></label>
+      <label class="row"><input type="checkbox" role="switch" data-layer="wavedir"><i class="thumb t-wavedir" aria-hidden="true"></i><span class="txt">Wave direction<small>At the daily peak (VMDR)</small><span class="hint" id="hint-wavedir"></span></span></label>
+    </details>
+    <details class="disc rows" data-key="ov-atmos">
+      <summary>Atmosphere</summary>
+      <label class="row"><input type="checkbox" role="switch" data-layer="wind"><i class="thumb t-wind" aria-hidden="true"></i><span class="txt">Wind barbs<small>ECMWF IFS 10 m, knots</small><span class="hint" id="hint-wind"></span></span></label>
+      <div class="subctl seg" role="group" aria-label="Wind time within the day" id="windsteps"></div>
+    </details>
+    <details class="disc rows" data-key="ov-seafloor">
+      <summary>Seafloor</summary>
+      <label class="row"><input type="checkbox" role="switch" data-layer="depth"><i class="thumb t-depth" aria-hidden="true"></i><span class="txt">Bathymetry<small>IBCSO isobaths, tint, under 20 m hatch</small><span class="hint" id="hint-depth"></span></span></label>
+    </details>
+    <details class="disc rows" data-key="ov-verif">
+      <summary>Verification</summary>
+      <label class="row"><input type="checkbox" role="switch" data-layer="edges"><i class="thumb t-edges" aria-hidden="true"></i><span class="txt">Ice edge: satellite vs model<small>15% contours, NSIDC NRT vs CMEMS</small></span></label>
+    </details>
+    <details class="disc rows" data-key="ov-nav">
+      <summary>Navigation</summary>
       <label class="row"><input type="checkbox" role="switch" data-layer="bergs"><i class="thumb t-bergs" aria-hidden="true"></i><span class="txt">Icebergs<small>USNIC fixes, forecast day-dot chains</small><small class="adv" id="bergadv"></small><span class="hint" id="hint-bergs"></span></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="static"><i class="thumb t-static" aria-hidden="true"></i><span class="txt">Plan on today's ice<small>For comparison</small></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="ref2019"><i class="thumb t-ref" aria-hidden="true"></i><span class="txt">PolarRoute, Dec 2019<small>Reference run</small></span></label>
       <label class="row"><input type="checkbox" role="switch" data-layer="protected"><i class="thumb t-prot" aria-hidden="true"></i><span class="txt">Protected areas<small>Antarctic Treaty register</small></span></label>
-    </fieldset>
+    </details>
   </div>
 </aside>
 
@@ -100,8 +104,19 @@
     <button class="collapse" aria-expanded="true" aria-controls="rightbody" data-panel="right"><span class="visually-hidden">Collapse decision support</span></button>
   </div>
   <div class="panel-body rail" id="rightbody">
-    <section>
-      <h3>Voyage plan <small id="vesselname"></small></h3>
+    <section class="summary" aria-label="Route health summary">
+      <h3>Route health <small>on the route below</small></h3>
+      <div class="health"><span class="state" id="healthState"></span><span class="small muted" id="healthWhy"></span></div>
+      <div class="binding" id="binding"></div>
+    </section>
+
+    <details class="disc" data-key="gates">
+      <summary><h3>All nine gates</h3></summary>
+      <ol class="gates" id="gates"></ol>
+    </details>
+
+    <details class="disc" data-key="plan">
+      <summary><h3>Voyage plan <small id="vesselname"></small></h3></summary>
       <div class="field"><span>Destination</span>
         <div class="seg" role="group" aria-label="Destination">
           <button data-dest="approach" aria-pressed="true">Bharati approach</button>
@@ -124,44 +139,41 @@
         </div>
       </div>
       <p class="xsmall muted" id="limitnote"></p>
-    </section>
+    </details>
 
-    <section>
-      <h3>Two ways to plan</h3>
+    <details class="disc" data-key="compare">
+      <summary><h3>Two ways to plan</h3></summary>
       <table class="compare" id="compare"></table>
       <div id="planNote"></div>
-    </section>
+    </details>
 
-    <section>
-      <h3>Route health <small>on the route above</small></h3>
-      <div class="health"><span class="state" id="healthState"></span><span class="small muted" id="healthWhy"></span></div>
-      <ol class="gates" id="gates"></ol>
-    </section>
-
-    <section>
-      <h3>POLARIS along the track <small>MSC.1/Circ.1519</small></h3>
+    <details class="disc" data-key="polaris">
+      <summary><h3>POLARIS along the track <small>MSC.1/Circ.1519</small></h3></summary>
       <div class="field"><label for="stage">Ice stage</label>
         <select id="stage"><option value="">Not declared</option></select>
       </div>
       <div id="polaris"></div>
-    </section>
+    </details>
 
-    <section>
-      <h3>Icebergs <small id="bergsrc"></small></h3>
+    <details class="disc" data-key="bergs">
+      <summary><h3>Icebergs near the track <small id="bergsrc"></small></h3></summary>
       <ul class="bergs" id="bergs"></ul>
-    </section>
+    </details>
 
-    <section>
-      <h3>Ice at the Bharati approach</h3>
+    <details class="disc" data-key="season">
+      <summary><h3>Ice at the Bharati approach</h3></summary>
       <svg class="spark" id="spark" role="img" aria-label="Sea-ice concentration at the Bharati approach through the season"></svg>
       <p class="xsmall muted" id="sparknote"></p>
-    </section>
+    </details>
 
-    <section class="credits" id="credits"></section>
+    <details class="disc" data-key="credits" id="creditsbox">
+      <summary><h3>Data and credits</h3></summary>
+      <div class="credits" id="credits"></div>
+    </details>
   </div>
 </aside>
 
-<div class="legendcards" id="legend" aria-label="Legend"></div>
+<details class="legendcards disc" data-key="legend" id="legendbox"><summary>Legend</summary><div class="cards" id="legend"></div></details>
 <div class="mapctl" id="mapctl">
   <div class="zoomctl" role="group" aria-label="Zoom">
     <button class="iconbtn" id="zoomIn" aria-label="Zoom in">+</button>
