@@ -38,7 +38,7 @@ const [meta, stat] = await Promise.all([fetch("data/meta.json").then((r) => r.js
     <div><div class="bignum" style="color:var(--route)">30.7%</div><span>Same cell, flagged pixels removed</span></div>
     <div><div class="bignum">${a.station_approaches.Bharati.pct_of_days_affected}%</div><span>Days with suspect cells near Bharati, ${a.archive.first.slice(0, 4)}–${a.archive.last.slice(0, 4)}</span></div>
     <div><div class="bignum">${Math.round(a.land_spillover.mean_cells_per_day)}</div><span>Spillover cells per day, every day of ${a.archive.files}</span></div>`;
-  $("#qaAudit").textContent = `Audit over ${a.archive.files} daily files (${a.archive.first}–${a.archive.last}). Source: isih/figures/ice_quality_audit.json, produced by isih/audit_ice_quality.py. The fix (isih/ice_quality.py) marks flagged cells unknown instead of open water, so the router inherits the surrounding ice and becomes more cautious, not less.`;
+  $("#qaAudit").textContent = `Audit over ${a.archive.files} daily files (${a.archive.first}–${a.archive.last}). Source: dakshin/figures/ice_quality_audit.json, produced by dakshin/audit_ice_quality.py. The fix (dakshin/ice_quality.py) marks flagged cells unknown instead of open water, so the router inherits the surrounding ice and becomes more cautious, not less.`;
 }
 
 // ---------------------------------------------------------------- destination window
@@ -61,7 +61,7 @@ const [meta, stat] = await Promise.all([fetch("data/meta.json").then((r) => r.js
   s += `<line x1="${p.l}" x2="${W - p.r}" y1="${y(w.ice_limit_pct)}" y2="${y(w.ice_limit_pct)}" stroke="#b3261e" stroke-dasharray="5 4"/><text x="${W - p.r}" y="${y(w.ice_limit_pct) - 5}" text-anchor="end" fill="#b3261e">${w.ice_limit_pct}% working limit</text>`;
   $("#windowChart").innerHTML = s;
   const sm = w.summary[st];
-  $("#windowCap").innerHTML = `Bars: Bharati's own cell each day, green if the vessel-performance mesh let ${w.vessel} in, red if not. Closed on <b>${sm.days_closed} of ${sm.days_observed}</b> days. A navy stub marks days the raw product read exactly 0.0% while the quality-checked value was higher. Magenta line: the approach 100 km north, open on ${w.summary[ap].days_observed - w.summary[ap].days_closed} of ${w.summary[ap].days_observed}. Maitri is left out: it is about 100 km inland and its ship offload point is not sourced, so it was never scored. Source: isih/figures/destination_window.json.`;
+  $("#windowCap").innerHTML = `Bars: Bharati's own cell each day, green if the vessel-performance mesh let ${w.vessel} in, red if not. Closed on <b>${sm.days_closed} of ${sm.days_observed}</b> days. A navy stub marks days the raw product read exactly 0.0% while the quality-checked value was higher. Magenta line: the approach 100 km north, open on ${w.summary[ap].days_observed - w.summary[ap].days_closed} of ${w.summary[ap].days_observed}. Maitri is left out: it is about 100 km inland and its ship offload point is not sourced, so it was never scored. Source: dakshin/figures/destination_window.json.`;
 }
 
 // ---------------------------------------------------------------- 2019 mesh map
@@ -111,7 +111,7 @@ const [meta, stat] = await Promise.all([fetch("data/meta.json").then((r) => r.js
   const r = stat.regret2019;
   $("#regretTable").innerHTML = `<thead><tr><th>Planner</th><th class="num">Planned</th><th class="num">Actual</th><th class="num">Blocked</th><th class="num">Max ice met</th></tr></thead><tbody>${r.results.map((x) =>
     `<tr><td><b>${x.planner}</b><br><span class="small muted">${r.arms[x.planner]}</span></td><td class="num">${x.planned_days != null ? fmt(x.planned_days, 2) + " d" : "–"}</td><td class="num">${fmt(x.actual_days, 2)} d</td><td class="num">${x.blocked_hours} h</td><td class="num">${x.max_sic_encountered}%</td></tr>`).join("")}</tbody>`;
-  $("#regretCap").textContent = `${r.experiment}. ${r.route}, departing ${r.depart}, on observed daily ice (${r.ice_source}). On this one departure the plans barely differ, so the repo explicitly says not to claim that daily re-planning beats static planning. One voyage is an anecdote, not a result. Source: isih/figures/route_regret.json.`;
+  $("#regretCap").textContent = `${r.experiment}. ${r.route}, departing ${r.depart}, on observed daily ice (${r.ice_source}). On this one departure the plans barely differ, so the repo explicitly says not to claim that daily re-planning beats static planning. One voyage is an anecdote, not a result. Source: dakshin/figures/route_regret.json.`;
   const v = stat.vessels2019;
   const runs = Object.values(v.runs);
   $("#vesselText").innerHTML = `<h3 style="margin-bottom:6px">Same ice, two ships</h3>

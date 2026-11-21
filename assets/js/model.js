@@ -3,12 +3,12 @@
 // Nothing here is tuned for the demo: thresholds and tables are copied.
 
 // ---------------------------------------------------------------------------
-// Vessel model  (isih/sim/router.py: VesselModel)
+// Vessel model  (dakshin/sim/router.py: VesselModel)
 // ---------------------------------------------------------------------------
 export const VESSEL = {
   name: "MV Vasiliy Golovnin",
   imo: "8723426",
-  maxSpeedKn: 16.4,   // service speed, verified against four registries (isih/ice_meshes.py)
+  maxSpeedKn: 16.4,   // service speed, verified against four registries (dakshin/ice_meshes.py)
   minSpeedKn: 2.0,
   beamM: 22.4,
 };
@@ -40,7 +40,7 @@ export function haversineKm(lat1, lon1, lat2, lon2) {
 }
 
 // ---------------------------------------------------------------------------
-// Time-aware router  (isih/sim/router.py: Router)
+// Time-aware router  (dakshin/sim/router.py: Router)
 // The cost of entering a cell uses the ice forecast for the hour the ship
 // gets there, not the ice at departure.
 // ---------------------------------------------------------------------------
@@ -179,7 +179,7 @@ export class Router {
 }
 
 // ---------------------------------------------------------------------------
-// POLARIS  (isih/polaris.py, MSC.1/Circ.1519 Table 1.3, standard ice)
+// POLARIS  (dakshin/polaris.py, MSC.1/Circ.1519 Table 1.3, standard ice)
 // ---------------------------------------------------------------------------
 export const STAGES = ["Ice-free", "New", "Grey", "Grey-White", "Thin FY 1st", "Thin FY 2nd",
   "Med FY <1 m", "Med FY", "Thick FY", "Second Year", "Light MY <2.5 m", "Heavy MY"];
@@ -228,7 +228,7 @@ export function band(sic, stage, clsLo = "IA", clsHi = "PC4") {
 }
 
 // ---------------------------------------------------------------------------
-// Nine decision gates and route health  (isih/gates.py, isih/decision.py)
+// Nine decision gates and route health  (dakshin/gates.py, dakshin/decision.py)
 // ---------------------------------------------------------------------------
 export const MARGINAL_BAND_PCT = 7.4; // one median CDR retrieval std-dev across 70-90% ice
 export const BLOCKED_ON = {

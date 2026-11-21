@@ -52,7 +52,7 @@ The honest summary of what is not done: no calibrated uncertainty yet, no iceber
 
 Antarctica is surrounded by a ring of floating sea ice. It grows in winter and shrinks in summer, but even in summer it does not vanish. The Indian ship arrives in the austral summer, roughly December to February, when the ice edge has pulled back as far as it ever does. Even so, the last stretch to the coast can still be ice.
 
-The ice is not a fixed wall. Wind pushes it, currents carry it, and it opens and closes. A gap that was open yesterday can be shut tomorrow. The ship cannot turn around quickly, and there is no port to run to. The repo's own research documents describe real cases of ships being trapped for weeks or months, including the MV Magdalena Oldendorff, which was beset near Novolazarevskaya in 2002 for about five and a half months (`docs/VIVA_PREP.md`).
+The ice is not a fixed wall. Wind pushes it, currents carry it, and it opens and closes. A gap that was open yesterday can be shut tomorrow. The ship cannot turn around quickly, and there is no port to run to. The repo's own research documents describe real cases of ships being trapped for weeks or months, including the MV Magdalena Oldendorff, which was beset near Novolazarevskaya in 2002 for about five and a half months (`docs/archive-hackathon/VIVA_PREP.md`).
 
 On top of the sea ice there are icebergs. Some are enormous. The largest one in the catalogue the team downloaded, D15A, covers about 3,037 square kilometres. These giants drift slowly, but they matter because they can block approaches and because they are what the lookout and radar must watch for.
 
@@ -66,7 +66,7 @@ The repo's own docs make the point that a voyage is not one decision. It is a se
 - If it is shut, do we wait, or do we switch to moving cargo by helicopter and barge from the ice edge?
 - Is the plan I approved still valid, and if not, what changed and what are my alternatives?
 
-The team's most important finding, from real satellite data, is that the open ocean is the easy part. In `docs/ISIH_RESULTS.md`, about 5,800 km of the 5,813 km route has an average of only 6 percent ice. The hard part is the last 100 km. For December 2019, Bharati's own cell was closed to this ship on 23 of 31 days (74.2 percent), while the water 100 km to the north was open on all 31. The repo puts it in one line: the crossing is not the hard part, the last 100 km is.
+The team's most important finding, from real satellite data, is that the open ocean is the easy part. In `docs/PROTOTYPE_RESULTS.md`, about 5,800 km of the 5,813 km route has an average of only 6 percent ice. The hard part is the last 100 km. For December 2019, Bharati's own cell was closed to this ship on 23 of 31 days (74.2 percent), while the water 100 km to the north was open on all 31. The repo puts it in one line: the crossing is not the hard part, the last 100 km is.
 
 ### 2.3 Why this matters to MoES and NCPOR
 
@@ -76,18 +76,18 @@ The repo also records what exists today. An earlier Indian study (Mishra and co-
 
 ### 2.4 What "decision support" means here
 
-The problem statement says decision support. The team takes that literally. The system does not steer the ship and does not replace the captain's judgement. In the demo, the master's intended route is evaluated first, and alternatives are shown with reasons. A route is not approved until a named person approves it, and approving adds a new version rather than overwriting the old one (`isih/decision.py`, `isih/workflow.py`).
+The problem statement says decision support. The team takes that literally. The system does not steer the ship and does not replace the captain's judgement. In the demo, the master's intended route is evaluated first, and alternatives are shown with reasons. A route is not approved until a named person approves it, and approving adds a new version rather than overwriting the old one (`dakshin/decision.py`, `dakshin/workflow.py`).
 
 
 ## 3. The system at a glance
 
-The repo's own viva guide boils everything down to three questions (`docs/VIVA_PREP.md`).
+The repo's own viva guide boils everything down to three questions (`docs/archive-hackathon/VIVA_PREP.md`).
 
 | Question | The team's answer | Where it lives |
 |---|---|---|
-| Where will the ice be? | A U-Net that corrects a physics forecast | `models/sic_correction/unet.py`, `isih/kaggle/` |
+| Where will the ice be? | A U-Net that corrects a physics forecast | `models/sic_correction/unet.py`, `dakshin/kaggle/` |
 | Where will icebergs drift? | A published physics equation, no neural network | `models/iceberg/drift.py` |
-| Which way should the ship go? | The British Antarctic Survey's PolarRoute, run on an ice mesh | `isih/make_route_figure.py`, `isih/ice_meshes.py` |
+| Which way should the ship go? | The British Antarctic Survey's PolarRoute, run on an ice mesh | `dakshin/make_route_figure.py`, `dakshin/ice_meshes.py` |
 
 Around those three sit supporting pieces: a quality-control layer for the satellite data, a risk framework (POLARIS) used as a band rather than a number, a set of nine "decision gates" that decide whether a route is healthy, a workflow that walks the captain from planning to approval, and a web console that shows all of it.
 
@@ -95,7 +95,7 @@ It helps to hold two pictures in your head, because the repo contains both.
 
 The first is the **final product design**. A shore tier with plenty of bandwidth and computing power downloads data, trains models and builds a small "voyage pack" each night. A vessel tier, a laptop on the bridge with no internet, receives the pack and runs the router locally. Most of this is described in `docs/ARCHITECTURE.md` and is design, not code.
 
-The second is the **ISIH prototype**, which lives in the `isih/` folder and is what actually runs. It is deliberately kept separate from the final product so the two are never confused. The prototype shares exactly one thing with the final design: the U-Net file.
+The second is the **ISIH prototype**, which lives in the `dakshin/` folder and is what actually runs. It is deliberately kept separate from the final product so the two are never confused. The prototype shares exactly one thing with the final design: the U-Net file.
 
 When you talk to the professor, say which of the two you mean. Mixing them up is the fastest way to say something false.
 
@@ -122,7 +122,7 @@ The trade-off is coarse resolution. One measurement covers a footprint of tens o
 
 A map projection flattens the curved Earth. Near the poles, ordinary latitude and longitude grids go badly wrong because lines of longitude all meet at a point. Sea-ice data is therefore stored on a polar stereographic grid, which looks at the pole from above.
 
-The grid used in this project is NSIDC's south polar stereographic grid, called EPSG:3412. Its centre is the South Pole and its standard parallel is 70 degrees south. Each cell is 25 km by 25 km. The full grid is 332 by 316 cells (the repo checked this against a real file: `docs/ISIH_README.md`). Because the grid is regular in projected coordinates, finding which cell a point falls in is simple arithmetic, which is what `isih/grid.py` does.
+The grid used in this project is NSIDC's south polar stereographic grid, called EPSG:3412. Its centre is the South Pole and its standard parallel is 70 degrees south. Each cell is 25 km by 25 km. The full grid is 332 by 316 cells (the repo checked this against a real file: `docs/PROTOTYPE_README.md`). Because the grid is regular in projected coordinates, finding which cell a point falls in is simple arithmetic, which is what `dakshin/grid.py` does.
 
 An analogy: a lat-lon grid is like a chessboard that gets squeezed into thin slivers near the poles. A polar stereographic grid is like looking down a well, where all the squares stay roughly the same size.
 
@@ -164,7 +164,7 @@ POLARIS is a method inside the Polar Code guidance (IMO circular MSC.1/Circ.1519
 
 A key fact for this project: POLARIS is indexed by ice **type** (which tracks thickness), not by concentration. A concentration forecast alone cannot give you a RIO. You would also need a thickness or stage-of-development forecast. This is why the repo says an "80 percent ice limit" is only a working stand-in and not a regulatory number (`docs/NAVIGATION_RESEARCH.md`).
 
-There is a second problem. The Golovnin carries an old Russian ice notation, KM(*) ULA, which has no row in the POLARIS tables. The Polar Code's own way to settle this is a ship-by-ship assessment approved by the flag state, with no lookup table by design. So the repo declines to print a single RIO number for the Golovnin. In `isih/polaris.py`, across plausible rows the RIO for the same ice swings between +19 and minus 21 on a regime like the Bharati approach. Picking one row would be picking an answer, not computing one.
+There is a second problem. The Golovnin carries an old Russian ice notation, KM(*) ULA, which has no row in the POLARIS tables. The Polar Code's own way to settle this is a ship-by-ship assessment approved by the flag state, with no lookup table by design. So the repo declines to print a single RIO number for the Golovnin. In `dakshin/polaris.py`, across plausible rows the RIO for the same ice swings between +19 and minus 21 on a regime like the Bharati approach. Picking one row would be picking an answer, not computing one.
 
 ### 4.7 Icebergs and drift
 
@@ -190,11 +190,11 @@ The land spillover filter exists because a coastal footprint that overlaps land 
 
 The team noticed this because of physics. On 1 December 2019 a cell 35 km off Bharati read exactly 0.0 percent, sitting right next to cells reading 60 percent. Real ice does not do that. Real ice edges have gradients. Three days later the same cell read 90 percent. The ice never left. The retrieval did.
 
-`isih/ice_quality.py` reads the flag and sets "land spillover" and "no input" cells to NaN, meaning "not a number", meaning unknown. Downstream, the mesh builder drops NaN cells and fills them from the surrounding parent cell, so an unknown coastal cell inherits its neighbourhood instead of claiming open water. The slogan in the code is that "I don't know" routes a ship more safely than a confident zero.
+`dakshin/ice_quality.py` reads the flag and sets "land spillover" and "no input" cells to NaN, meaning "not a number", meaning unknown. Downstream, the mesh builder drops NaN cells and fills them from the surrounding parent cell, so an unknown coastal cell inherits its neighbourhood instead of claiming open water. The slogan in the code is that "I don't know" routes a ship more safely than a confident zero.
 
 The team measured the problem over all 1,096 daily files from 2018 to 2020. The filter fires on 100 percent of days, suppressing about 118 cells per day on average. In the 200 km box around Bharati, suspect cells appear on 43.2 percent of days. They checked that masking moves the answer in the safe direction: mean ice in that box on 1 December 2019 goes from 46.8 percent to 54.6 percent. A residual caveat, stated in the repo: the parent-cell fill still gives 30 to 36 percent on artifact days when the surroundings suggest 80 to 95. The fix removes a confident wrong answer. It does not yet give a confident right one.
 
-The "standard deviation" layer, `cdr_seaice_conc_stdev`, is the producers' own per-pixel uncertainty estimate. The team uses it once, to set the "marginal" band in the ice gate: the median value across the 70 to 90 percent concentration band in December 2019 is 7.4 points, so "marginal" means "within one standard deviation of the limit" (`isih/gates.py`).
+The "standard deviation" layer, `cdr_seaice_conc_stdev`, is the producers' own per-pixel uncertainty estimate. The team uses it once, to set the "marginal" band in the ice gate: the median value across the 70 to 90 percent concentration band in December 2019 is 7.4 points, so "marginal" means "within one standard deviation of the limit" (`dakshin/gates.py`).
 
 ### 4.10 Mesh-based route planning, Dijkstra and PolarRoute
 
@@ -254,7 +254,7 @@ When you train a model you hold some data back to test it. For daily geophysical
 
 **Kaggle** offers free notebooks with GPUs. The team trained there (a T4 GPU, one to two hours for all four horizons) because it was free and it keeps the CMEMS password in Kaggle Secrets instead of on anyone's laptop. The trained checkpoints are not in the repo.
 
-**MLflow** is an open-source tool that records experiments: parameters, metrics, models. Because the model was trained on Kaggle where MLflow could not watch, the script `isih/mlflow_backfill.py` logs the already-recorded results into a local MLflow store, one run per forecast horizon, each tagged as a backfill so nobody mistakes it for a live run. It copies numbers verbatim from `ISIH_RESULTS.md` and refuses to invent any. The `mlruns/` folder is gitignored, so a fresh clone gets the script and not the runs.
+**MLflow** is an open-source tool that records experiments: parameters, metrics, models. Because the model was trained on Kaggle where MLflow could not watch, the script `dakshin/mlflow_backfill.py` logs the already-recorded results into a local MLflow store, one run per forecast horizon, each tagged as a backfill so nobody mistakes it for a live run. It copies numbers verbatim from `docs/PROTOTYPE_RESULTS.md` and refuses to invent any. The `mlruns/` folder is gitignored, so a fresh clone gets the script and not the runs.
 
 **FastAPI** is a Python framework for web servers. It serves the demo's data and the web console.
 
@@ -277,17 +277,17 @@ The repo's rule is that every input traces back to a real satellite, a real weat
 
 | Data | Provider and exact name | How it is fetched | Login needed | Used for |
 |---|---|---|---|---|
-| Observed sea-ice concentration (the "truth") | NOAA/NSIDC CDR G02202 version 6, south daily, 25 km | `isih/download_nsidc.py` reads the yearly directory listing at `noaadata.apps.nsidc.org/NOAA/G02202_V6/south/daily/<year>/`, then downloads each `sic_pss25_YYYYMMDD_F17_v06r00.nc` file with 6 parallel workers, 3 retries, and rejects files under 1,000 bytes | No | Model training target, QA audit, route mesh |
-| Background sea-ice concentration | CMEMS GLORYS12 reanalysis, `cmems_mod_glo_phy_my_0.083deg_P1D-m`, variable `siconc` | `copernicusmarine.subset()` in `isih/build_dataset.py`, one year at a time, over the box 5 W to 85 E and 48 S to 80 S | Yes, a free CMEMS account (on Kaggle it sits in Kaggle Secrets) | The field the U-Net corrects |
+| Observed sea-ice concentration (the "truth") | NOAA/NSIDC CDR G02202 version 6, south daily, 25 km | `dakshin/download_nsidc.py` reads the yearly directory listing at `noaadata.apps.nsidc.org/NOAA/G02202_V6/south/daily/<year>/`, then downloads each `sic_pss25_YYYYMMDD_F17_v06r00.nc` file with 6 parallel workers, 3 retries, and rejects files under 1,000 bytes | No | Model training target, QA audit, route mesh |
+| Background sea-ice concentration | CMEMS GLORYS12 reanalysis, `cmems_mod_glo_phy_my_0.083deg_P1D-m`, variable `siconc` | `copernicusmarine.subset()` in `dakshin/build_dataset.py`, one year at a time, over the box 5 W to 85 E and 48 S to 80 S | Yes, a free CMEMS account (on Kaggle it sits in Kaggle Secrets) | The field the U-Net corrects |
 | Daily CMEMS forecast cycles | CMEMS `GLOBAL_ANALYSISFORECAST_PHY_001_024`, dataset `cmems_mod_glo_phy_anfc_0.083deg_P1D-m`, variables `siconc`, `sithick`, `usi`, `vsi` | `scripts/harvest_cmems.sh`, run by the GitHub Actions workflow `.github/workflows/cmems-harvest.yml` | Yes, stored as GitHub secrets | Future training and acceptance testing of the corrected forecast |
 | Iceberg positions and sizes | US National Ice Center Antarctic iceberg CSV, weekly | `models/iceberg/catalogue.py` downloads `usicecenter.gov/File/DownloadCurrent?pId=134`; the committed file is `data/icebergs/usnic_antarctic_20260902.csv` | No | Regime check, iceberg layer in the demo |
-| Coastline | Natural Earth, public domain | `isih/coastline.py` fetches it once, clips it to the corridor, simplifies it, and commits `isih/figures/coastline.json` | No | Chart background |
-| Protected areas | Antarctic Treaty Secretariat `apa_shape_2024.zip` | `isih/download_protected_areas.py`; `isih/protected_areas.py` builds a committed extract | No | Station-operations constraints |
-| Ship dimensions | Four independent registries, recorded in `docs/research/VESSEL_SPECIFICATIONS.md` | Hand-entered into `isih/ice_meshes.py` | n/a | Vessel model |
+| Coastline | Natural Earth, public domain | `dakshin/coastline.py` fetches it once, clips it to the corridor, simplifies it, and commits `dakshin/figures/coastline.json` | No | Chart background |
+| Protected areas | Antarctic Treaty Secretariat `apa_shape_2024.zip` | `dakshin/download_protected_areas.py`; `dakshin/protected_areas.py` builds a committed extract | No | Station-operations constraints |
+| Ship dimensions | Four independent registries, recorded in `docs/research/VESSEL_SPECIFICATIONS.md` | Hand-entered into `dakshin/ice_meshes.py` | n/a | Vessel model |
 
 A few practical details are worth knowing, because a professor may ask how robust the pipeline is.
 
-The NSIDC downloader does not guess file names. Different satellites supply the record over the years, and the platform code appears in the file name, so the script reads the real directory listing. It also refuses to report success if it finds no files. The result was 1,096 files for 2018 to 2020 with zero failures (`docs/ISIH_RESULTS.md`).
+The NSIDC downloader does not guess file names. Different satellites supply the record over the years, and the platform code appears in the file name, so the script reads the real directory listing. It also refuses to report success if it finds no files. The result was 1,096 files for 2018 to 2020 with zero failures (`docs/PROTOTYPE_RESULTS.md`).
 
 The CMEMS harvest exists because forecasts cannot be recreated afterwards. CMEMS overwrites each daily bulletin with the next one, so a missed day is gone. The workflow therefore runs twice a day, at 12:23 and 17:23 UTC. Both times are deliberately after 12:00 UTC, which is when CMEMS guarantees the daily bulletin (the comment in the workflow cites the product user manual). The second run costs nothing, because the script exits early if the day's file already exists. Before the fix, the job was firing four to five hours late on the hour, so the workflow now uses an odd minute. The harvested file is compressed from roughly 42 MB to about 4 to 5 MB per day using 16-bit packing, with a worst-case error three orders of magnitude below what any later step needs (`scripts/compress_netcdf.py`). At the time of this clone the archive holds 79 daily files, 31 August to 17 November 2026, with no gaps.
 
@@ -299,7 +299,7 @@ The catalogue loader refuses to invent data. If the USNIC feed is unreachable it
 |---|---|---|---|
 | Wind, air temperature, waves | ECMWF ERA5 (training, free CDS account) and NOAA GFS (live forecast, no login) | The physical drivers of ice motion, and wave penalties for the ship | Not downloaded. The model has no wind or temperature input today |
 | Sea-surface temperature | NOAA OISST v2.1, no login | Extra model input | Not downloaded |
-| Seafloor depth | GEBCO gridded bathymetry, no login | Under-keel clearance | Not downloaded. The vessel's 20 m minimum depth currently does nothing, and the code says so (`isih/gates.py`, `chart_gate`) |
+| Seafloor depth | GEBCO gridded bathymetry, no login | Under-keel clearance | Not downloaded. The vessel's 20 m minimum depth currently does nothing, and the code says so (`dakshin/gates.py`, `chart_gate`) |
 | A second ice source | AMSR2 (12.5 km), EUMETSAT OSI SAF (free account) | An independent check, so disagreement between sources can widen caution | Designed only |
 | Radar imagery | Sentinel-1 via the Copernicus Data Space | Ice edge and iceberg detection through darkness and cloud | Not used |
 | Long iceberg history | BYU/NIC database, 1978 to 2025 | Training a correction to the iceberg physics | Not used |
@@ -322,7 +322,7 @@ flowchart TD
     B --> D
     D --> E[features.py<br/>12 input channels<br/>+ baselines]
     E --> F[Kaggle T4 training<br/>unet.py, 4 leads]
-    F --> G[ISIH_RESULTS.md<br/>skill vs persistence]
+    F --> G[PROTOTYPE_RESULTS.md<br/>skill vs persistence]
     G --> H[mlflow_backfill.py<br/>MLflow runs]
 
     B --> I[ice_quality.py<br/>QA flag to NaN]
@@ -340,13 +340,13 @@ flowchart TD
     R --> S[Browser consoles<br/>bridge.html and index.html]
 ```
 
-Two things to notice. The trained model (left branch) and the router (right branch) do not meet. The router is fed the observed NSIDC ice, not the model's corrected output. The trained checkpoint lives on Kaggle and is not in the repo. The doc `docs/ISIH_README.md` states that model inference is not in the demo, and that the skill numbers are shown as text with their caveats. This is the most important structural fact about the prototype, and you should say it before a professor asks.
+Two things to notice. The trained model (left branch) and the router (right branch) do not meet. The router is fed the observed NSIDC ice, not the model's corrected output. The trained checkpoint lives on Kaggle and is not in the repo. The doc `docs/PROTOTYPE_README.md` states that model inference is not in the demo, and that the skill numbers are shown as text with their caveats. This is the most important structural fact about the prototype, and you should say it before a professor asks.
 
 ### 6.2 Step-by-step walk-through
 
 **Step 1. Download the truth.** `download_nsidc.py` pulls daily NSIDC concentration files for 2018 to 2020. Each file is a NetCDF holding the concentration on a 332 by 316 polar grid, a quality flag layer, and a standard deviation layer.
 
-**Step 2. Fetch and regrid the background.** `build_dataset.py` downloads GLORYS12 `siconc` for the corridor and year. GLORYS12 sits on a latitude-longitude grid at about 9 km, finer than NSIDC's 25 km. The class `GlorysToNsidcRegridder` in `isih/grid.py` converts every source cell's position into the NSIDC projection, works out which target cell it falls in, and averages. Area-averaging, not bilinear interpolation, is the correct operation when you are going from fine to coarse, because bilinear would throw away most source cells and not preserve ice area. The mapping is computed once and reused for every day. The design rule recorded in the file is that the truth is never resampled: the finer field is moved onto the truth's grid, because resampling the field you score against would create edge artifacts that look like model error. Cells with no source point stay NaN, because an empty cell is unknown, not ice-free.
+**Step 2. Fetch and regrid the background.** `build_dataset.py` downloads GLORYS12 `siconc` for the corridor and year. GLORYS12 sits on a latitude-longitude grid at about 9 km, finer than NSIDC's 25 km. The class `GlorysToNsidcRegridder` in `dakshin/grid.py` converts every source cell's position into the NSIDC projection, works out which target cell it falls in, and averages. Area-averaging, not bilinear interpolation, is the correct operation when you are going from fine to coarse, because bilinear would throw away most source cells and not preserve ice area. The mapping is computed once and reused for every day. The design rule recorded in the file is that the truth is never resampled: the finer field is moved onto the truth's grid, because resampling the field you score against would create edge artifacts that look like model error. Cells with no source point stay NaN, because an empty cell is unknown, not ice-free.
 
 **Step 3. Pair and align.** Dates present in both sources are kept. A day missing from either is dropped, not interpolated. A validity mask marks cells where both fields are present. Nothing is imputed, because filling gaps would train the model on fiction.
 
@@ -354,7 +354,7 @@ Two things to notice. The trained model (left branch) and the router (right bran
 
 **Step 5. Compute baselines before training.** `evaluate_baselines` scores raw background, background plus a constant offset, background plus a per-pixel average bias map, and persistence. They are computed first, so the bar is fixed before the result is known. The per-pixel bias map is the strongest trivial method, and the repo explicitly says that if it matches the network, the network is decoration.
 
-**Step 6. Train.** The Kaggle notebook (generated by `isih/kaggle/make_notebook.py`) trains one U-Net per lead time (1, 3, 5, 7 days). Settings from the notebook: 12 input channels, 32 base filters, depth 3, so 1,929,601 parameters; the Adam optimiser at learning rate 0.001; batch size 8; a masked mean squared error loss, where only valid cells count; the learning rate halves when validation stops improving; training stops after 12 epochs without improvement, up to 60; mixed precision on the GPU; the same random seed at every lead so the horizons are comparable. The split is 70, 15, 15 percent in time order. The training years are 2019 and 2020 only.
+**Step 6. Train.** The Kaggle notebook (generated by `dakshin/kaggle/make_notebook.py`) trains one U-Net per lead time (1, 3, 5, 7 days). Settings from the notebook: 12 input channels, 32 base filters, depth 3, so 1,929,601 parameters; the Adam optimiser at learning rate 0.001; batch size 8; a masked mean squared error loss, where only valid cells count; the learning rate halves when validation stops improving; training stops after 12 epochs without improvement, up to 60; mixed precision on the GPU; the same random seed at every lead so the horizons are comparable. The split is 70, 15, 15 percent in time order. The training years are 2019 and 2020 only.
 
 **Step 7. Score once.** The test slice, the last 15 percent, is scored exactly once. Section 8 gives the results.
 
@@ -364,7 +364,7 @@ Two things to notice. The trained model (left branch) and the router (right bran
 
 **Step 10. Apply the ship.** `VesselPerformanceModeller` takes the mesh and the Golovnin configuration (30.4 km/h service speed, 22.4 m beam, 20 m minimum depth, 3.0 m maximum wave, 80 percent maximum ice concentration). It marks each cell accessible or not and gives a speed per heading. The 80 percent limit is a working stand-in, not an ice-class number.
 
-**Step 11. Route.** `RoutePlanner` runs Dijkstra on that vessel mesh from Cape Town (33.9 S, 18.4 E) to Bharati (69.4 S, 76.2 E) and smooths the path. The result for 1 December 2019 is 41 legs and 8.58 days of steaming over about 5,813 km (`docs/ISIH_RESULTS.md`).
+**Step 11. Route.** `RoutePlanner` runs Dijkstra on that vessel mesh from Cape Town (33.9 S, 18.4 E) to Bharati (69.4 S, 76.2 E) and smooths the path. The result for 1 December 2019 is 41 legs and 8.58 days of steaming over about 5,813 km (`docs/PROTOTYPE_RESULTS.md`).
 
 **Step 12. Run the experiments.** Four scripts probe that machinery against real data:
 
@@ -375,13 +375,13 @@ Two things to notice. The trained model (left branch) and the router (right bran
 
 **Step 13. Assess the route with gates.** `gates.evaluate_all` checks nine gates. Only three can be judged from real data (ice, logistics and contingency); six return UNKNOWN and name the dataset that would settle them. `decision.health_from_gates` turns the gate states into a route health: VALID, DEGRADED, CRITICAL or INVALID. There is no score. Health is the worst gate state, and the gate that caused it is carried along as the reason. Any UNKNOWN gate caps health at DEGRADED. The code comment gives the reasoning: a system that reports VALID while blind to the chart and the weather would be lying by omission, and telling a master a route is fine when it is not is the expensive error.
 
-**Step 14. Show it.** The FastAPI app (`isih/demo/app.py`) serves JSON and static files. A browser console draws the chart on a canvas, with no map tiles, fonts or CDN, so it runs with no internet. At startup it refuses to proceed if any day in the window has no satellite file on disk, and it warms all 31 days into memory (about 3 seconds), so a slider cannot fail mid-demo.
+**Step 14. Show it.** The FastAPI app (`dakshin/demo/app.py`) serves JSON and static files. A browser console draws the chart on a canvas, with no map tiles, fonts or CDN, so it runs with no internet. At startup it refuses to proceed if any day in the window has no satellite file on disk, and it warms all 31 days into memory (about 3 seconds), so a slider cannot fail mid-demo.
 
 ### 6.3 The second flow: the synthetic bridge console
 
-There is a second thing in the demo that you must not confuse with the real pipeline. The default page (`/`) serves `bridge.html`, a more elaborate "bridge console", and it runs on a **synthetic world**. The folder `isih/sim/` builds seeded fields for pressure, wind, ice, sea-surface temperature, waves, visibility and icebergs. The code describes it as real physics with synthetic initial conditions. The equations are real (wind from the pressure gradient, clockwise flow around a southern low, waves damped by ice), but the state they run on is invented. The page carries a badge reading SYNTHETIC ENVIRONMENT, and every panel has a provenance dot: no dot for real, one for synthetic, two for simulated (`isih/demo/static/provenance.js`).
+There is a second thing in the demo that you must not confuse with the real pipeline. The default page (`/`) serves `bridge.html`, a more elaborate "bridge console", and it runs on a **synthetic world**. The folder `dakshin/sim/` builds seeded fields for pressure, wind, ice, sea-surface temperature, waves, visibility and icebergs. The code describes it as real physics with synthetic initial conditions. The equations are real (wind from the pressure gradient, clockwise flow around a southern low, waves damped by ice), but the state they run on is invented. The page carries a badge reading SYNTHETIC ENVIRONMENT, and every panel has a provenance dot: no dot for real, one for synthetic, two for simulated (`dakshin/demo/static/provenance.js`).
 
-The synthetic world exists because the real pipeline cannot yet show a time-aware route. `isih/sim/router.py` is a Dijkstra search where the cost of entering a cell uses the ice and weather valid at the time the ship would arrive, which is what a forecast-aware router must do. In this simulated world, fuel and time are not the same objective, because speed is cut by ice and sea state while fuel rises with the cube of speed. Icebergs are stepped forward in time with the real Wagner equations, but on synthetic wind and current.
+The synthetic world exists because the real pipeline cannot yet show a time-aware route. `dakshin/sim/router.py` is a Dijkstra search where the cost of entering a cell uses the ice and weather valid at the time the ship would arrive, which is what a forecast-aware router must do. In this simulated world, fuel and time are not the same objective, because speed is cut by ice and sea state while fuel rises with the cube of speed. Icebergs are stepped forward in time with the real Wagner equations, but on synthetic wind and current.
 
 The real December 2019 replay still exists at `/legacy` (`index.html`). The older docs describe that page as the default. The code says otherwise (section 11).
 
@@ -416,37 +416,37 @@ Pack size is a build-breaking constraint in the design: 50 KB per daily update a
 | File | What it does | Inputs | Outputs |
 |---|---|---|---|
 | `models/sic_correction/unet.py` | The residual U-Net, plus `apply_correction` (add and clip) | A tensor of channels | A correction in fraction units |
-| `isih/download_nsidc.py` | Downloads NSIDC daily ice files | Years | `.nc` files |
-| `isih/grid.py` | Polar-grid geometry and area-average regridding of GLORYS12 | Two grids | A field on the NSIDC grid |
-| `isih/build_dataset.py` | Pairs GLORYS12 and NSIDC per year | NSIDC files, CMEMS download | `isih_pairs_<year>.npz` and a manifest |
-| `isih/features.py` | Builds 12 input channels and the baselines | Aligned arrays, a lead | Inputs, targets, masks, baseline scores |
-| `isih/kaggle/make_notebook.py`, `isih_train.ipynb` | Generates and holds the training notebook | n/a | Trained checkpoints, skill table (outputs not saved in the repo) |
-| `isih/mlflow_backfill.py` | Logs recorded results into MLflow | Numbers copied from `ISIH_RESULTS.md` | MLflow runs |
-| `isih/ice_quality.py` | Reads QA flags, masks suspect cells, detects "hard zero next to ice" | One NSIDC file | Cleaned ice, a suspect mask |
-| `isih/audit_ice_quality.py` | Measures the spillover problem over all days | The archive | `ice_quality_audit.json` |
-| `isih/make_route_figure.py` | Builds a MeshiPhi mesh from one day of ice and routes | One NSIDC file | A mesh, a route |
-| `isih/ice_meshes.py` | The Golovnin config, cached daily vessel meshes, point lookup | A date | Vessel-performance mesh |
-| `isih/destination_window.py` | Is the station open each day? | 31 days | `destination_window.json` |
-| `isih/route_regret.py` | Cost of planning on old ice (static versus daily re-plan) | A departure date | Voyage outcomes |
-| `isih/alternatives.py` | Alternative corridors at different ice limits, two-ship comparison | A date | `alternatives.json`, `vessel_comparison.json` |
-| `isih/plot_route.py` | Draws the route figure and measures its own annotation | Route data | `route_map.png` |
-| `isih/polaris.py` | POLARIS RIO as a band across plausible ice classes | Concentration, a declared ice stage | Tier and speed limit per leg |
-| `isih/gates.py` | Evaluates the nine decision gates | Evidence | Gate results |
-| `isih/decision.py` | Decision, gate and route-health objects | Gate results | Route health and binding reasons |
-| `isih/workflow.py` | The passage workflow as a state machine | Actions | State or an error for an out-of-order step |
-| `isih/coastline.py`, `protected_areas.py`, `download_protected_areas.py` | Coast and treaty-area layers, built offline and committed | Natural Earth, ATS shapefile | Small JSON extracts |
+| `dakshin/download_nsidc.py` | Downloads NSIDC daily ice files | Years | `.nc` files |
+| `dakshin/grid.py` | Polar-grid geometry and area-average regridding of GLORYS12 | Two grids | A field on the NSIDC grid |
+| `dakshin/build_dataset.py` | Pairs GLORYS12 and NSIDC per year | NSIDC files, CMEMS download | `isih_pairs_<year>.npz` and a manifest |
+| `dakshin/features.py` | Builds 12 input channels and the baselines | Aligned arrays, a lead | Inputs, targets, masks, baseline scores |
+| `dakshin/kaggle/make_notebook.py`, `isih_train.ipynb` | Generates and holds the training notebook | n/a | Trained checkpoints, skill table (outputs not saved in the repo) |
+| `dakshin/mlflow_backfill.py` | Logs recorded results into MLflow | Numbers copied from `docs/PROTOTYPE_RESULTS.md` | MLflow runs |
+| `dakshin/ice_quality.py` | Reads QA flags, masks suspect cells, detects "hard zero next to ice" | One NSIDC file | Cleaned ice, a suspect mask |
+| `dakshin/audit_ice_quality.py` | Measures the spillover problem over all days | The archive | `ice_quality_audit.json` |
+| `dakshin/make_route_figure.py` | Builds a MeshiPhi mesh from one day of ice and routes | One NSIDC file | A mesh, a route |
+| `dakshin/ice_meshes.py` | The Golovnin config, cached daily vessel meshes, point lookup | A date | Vessel-performance mesh |
+| `dakshin/destination_window.py` | Is the station open each day? | 31 days | `destination_window.json` |
+| `dakshin/route_regret.py` | Cost of planning on old ice (static versus daily re-plan) | A departure date | Voyage outcomes |
+| `dakshin/alternatives.py` | Alternative corridors at different ice limits, two-ship comparison | A date | `alternatives.json`, `vessel_comparison.json` |
+| `dakshin/plot_route.py` | Draws the route figure and measures its own annotation | Route data | `route_map.png` |
+| `dakshin/polaris.py` | POLARIS RIO as a band across plausible ice classes | Concentration, a declared ice stage | Tier and speed limit per leg |
+| `dakshin/gates.py` | Evaluates the nine decision gates | Evidence | Gate results |
+| `dakshin/decision.py` | Decision, gate and route-health objects | Gate results | Route health and binding reasons |
+| `dakshin/workflow.py` | The passage workflow as a state machine | Actions | State or an error for an out-of-order step |
+| `dakshin/coastline.py`, `protected_areas.py`, `download_protected_areas.py` | Coast and treaty-area layers, built offline and committed | Natural Earth, ATS shapefile | Small JSON extracts |
 | `models/iceberg/drift.py` | The Wagner, Dell and Eisenman closed-form drift velocity | Wind, current, latitude, berg size | A velocity |
 | `models/iceberg/catalogue.py` | Fetches and parses the USNIC catalogue | The CSV | A table in SI units |
 | `models/iceberg/regime_report.py` | Which regime (wind or current dominated) the real bergs are in | Catalogue plus a declared wind and current sweep | `regime_report.json` |
-| `isih/sim/*` | The synthetic Southern Ocean world and a time-aware router | A seed and a time | Fields, bergs, traffic, warnings, routes |
-| `isih/demo/app.py`, `bridge_api.py` | The web server and the API behind the console | Files on disk, the world | JSON |
-| `isih/demo/data.py`, `decision_service.py`, `workflow_service.py`, `voyage.py` | Join real artifacts to the domain model; own-ship state; alerts | Files on disk | Decisions, alerts, waypoints |
-| `isih/demo/static/*` | The browser consoles (canvas chart, provenance dots, workflow screens) | API | The interface |
+| `dakshin/sim/*` | The synthetic Southern Ocean world and a time-aware router | A seed and a time | Fields, bergs, traffic, warnings, routes |
+| `dakshin/demo/app.py`, `bridge_api.py` | The web server and the API behind the console | Files on disk, the world | JSON |
+| `dakshin/demo/data.py`, `decision_service.py`, `workflow_service.py`, `voyage.py` | Join real artifacts to the domain model; own-ship state; alerts | Files on disk | Decisions, alerts, waypoints |
+| `dakshin/demo/static/*` | The browser consoles (canvas chart, provenance dots, workflow screens) | API | The interface |
 | `scripts/harvest_cmems.sh`, `.github/workflows/cmems-harvest.yml` | Daily CMEMS forecast archive | CMEMS credentials | `data/cmems_forecast_archive/*.nc` |
 | `scripts/compress_netcdf.py` | Shrinks harvested files | A `.nc` file | A packed `.nc` |
 | `scripts/gen_*_drawio.py` | Generate architecture diagrams | n/a | draw.io files |
 | `scripts/verify_claims.py` | Checks quoted numbers against the figure files | The JSON outputs | Pass or fail lines |
-| `isih/test_*.py`, `isih/sim/test_sim.py`, `isih/demo/test_*.py`, `models/iceberg/test_drift.py` | Tests | n/a | n/a |
+| `dakshin/test_*.py`, `dakshin/sim/test_sim.py`, `dakshin/demo/test_*.py`, `models/iceberg/test_drift.py` | Tests | n/a | n/a |
 
 ### 7.2 The pieces that matter most
 
@@ -466,11 +466,11 @@ Pack size is a build-breaking constraint in the design: 50 KB per daily update a
 
 In words: the berg moves with the surface current, plus a wind-driven correction that is partly along the wind (beta) and partly across it (alpha). Height cancels out, so only the berg's size matters, through one length. There is nothing to integrate, so it cannot go numerically unstable. The file documents three traps that give plausible-looking wrong answers: the preprint swaps the two drag coefficients relative to its own reference code (using the text's values puts a key constant 44 percent low), the Coriolis term must use its absolute value, and the printed alpha and beta lose precision. A test file with 23 tests reproduces the paper's coefficient table and its 765 m critical length. One more disclosed choice: the reference code deflects bergs to the right of the wind at every latitude, because the paper's quantitative work is Arctic. The team flips it left in the Southern Hemisphere from the sign of the Coriolis term. This is marked "inferred" in the code, and is nearly moot for giant bergs where wind barely matters.
 
-An important limit: `drift.py` returns an instantaneous velocity. It has no time stepping. No real berg has been advanced in time on real wind and current, and no trajectory error has been measured. The sim folder does step bergs forward, but on invented forcing (`docs/VIVA_PREP.md` makes this point forcefully).
+An important limit: `drift.py` returns an instantaneous velocity. It has no time stepping. No real berg has been advanced in time on real wind and current, and no trajectory error has been measured. The sim folder does step bergs forward, but on invented forcing (`docs/archive-hackathon/VIVA_PREP.md` makes this point forcefully).
 
 **The workflow (`workflow.py`).** A state machine with ten stages: sign in, command centre, voyage, mission, route, waypoints, review, approved, active, and a decision workspace. A route cannot be approved before it is reviewed, and cannot be reviewed before a mission says what "good" means. The mission matters in a concrete way: its destination policy ("must reach the station" or "the approach is acceptable") decides whether the logistics gate passes on a given day, so changing that single field changes route health on real observations. Sign-in is identity, not security. It records who is on watch. There is no user store, and the UI says so.
 
-**The tests.** There are unit tests for gates, decisions, workflow, protected areas, the synthetic world and the drift model, plus `isih/test_behavioural.py` with about a dozen behavioural tests (for example that alternatives differ measurably, that absence of iceberg data is never reported as "no icebergs", that every replay is labelled, and that no capability is claimed without data behind it). The demo tests assert that the published numbers come out unchanged from the files on disk. I could not run them here, because the environment had no PyTorch or PolarRoute, so treat the test counts as what the files contain, not as a result I saw pass.
+**The tests.** There are unit tests for gates, decisions, workflow, protected areas, the synthetic world and the drift model, plus `dakshin/test_behavioural.py` with about a dozen behavioural tests (for example that alternatives differ measurably, that absence of iceberg data is never reported as "no icebergs", that every replay is labelled, and that no capability is claimed without data behind it). The demo tests assert that the published numbers come out unchanged from the files on disk. I could not run them here, because the environment had no PyTorch or PolarRoute, so treat the test counts as what the files contain, not as a result I saw pass.
 
 
 ## 8. What is built and what is only designed
@@ -487,7 +487,7 @@ This is the section to learn best. The repo's own rule in `docs/TRUE_CLAIMS.md` 
 | Model output reaching the router | No. The router uses observed NSIDC ice | A conformal upper bound replaces the plain average in the ice threshold |
 | Iceberg physics | Closed-form velocity, tested; regime check on the real catalogue | Time-stepped trajectories on real wind and current, capped at 72 hours, with a learned correction |
 | Iceberg learned correction | Not built | Gradient boosting, evaluated leave-one-iceberg-out |
-| Iceberg hazard in the router | Not wired in `isih/` | Injected through PolarRoute's `excluded_zones` setting |
+| Iceberg hazard in the router | Not wired in `dakshin/` | Injected through PolarRoute's `excluded_zones` setting |
 | Routing | PolarRoute on one frozen mesh per day, observed ice | Time-expanded graph (one ice layer per forecast day) and a 12-run candidate sweep |
 | Quality control | QA flag masking applied to the routing ice. The model's own training data was not masked | One QC pass for all sources, feeding the model too |
 | Bathymetry | Absent. The depth constraint is inert | GEBCO with a larger safety margin where depth is predicted rather than surveyed |
@@ -496,7 +496,7 @@ This is the section to learn best. The repo's own rule in `docs/TRUE_CLAIMS.md` 
 
 ### 8.2 The model's results
 
-From `docs/ISIH_RESULTS.md`. These are test-slice numbers, RMSE as a fraction of concentration, lower is better.
+From `docs/PROTOTYPE_RESULTS.md`. These are test-slice numbers, RMSE as a fraction of concentration, lower is better.
 
 | Lead | Our model | Persistence | Background plus pixel bias | Raw GLORYS12 | Gain over persistence |
 |---|---|---|---|---|---|
@@ -535,7 +535,7 @@ A way to say this out loud: "Our headline number is a ceiling. It says a U-Net c
 
 ### 8.4 The routing results
 
-All from `docs/ISIH_RESULTS.md` (routing section), computed with PolarRoute 1.1.11 on real satellite ice for the Golovnin.
+All from `docs/PROTOTYPE_RESULTS.md` (routing section), computed with PolarRoute 1.1.11 on real satellite ice for the Golovnin.
 
 **Cape Town to Bharati on 1 December 2019:** 8.58 days of steaming, 41 legs, about 5,813 km. This is ideal steaming time only. It excludes weather, station operations, and any sea-state penalty, because PolarRoute defines a wave-resistance function and never calls it (the repo verified this in the installed source). So it is a lower bound. A real voyage takes two to three weeks. Do not present 8.6 days as a predicted voyage duration.
 
@@ -677,7 +677,7 @@ The last-100-km finding, from real data. Showing that Bharati's own cell was clo
 
 Uncertainty reaching the routing decision. The claim is that PolarRoute drops the uncertainty from its IceNet loader (checked in source), that published ice products carry uncertainty which their own producers say excludes melt ponds, thin ice and weather effects (Lavergne et al., 2019), and that the team found no published study that propagates sea-ice forecast uncertainty into a routing decision. The repo flags that last point as medium confidence because the search was cut short. And this feature is **designed, not built**. The prototype plans on a single model with no band.
 
-The time-aware router. PolarRoute has no time dimension, so a 17-day voyage is planned as though it meets day-zero ice on day 17. The team's fix, a time-expanded graph, exists as designed, and as a working search in the synthetic world (`isih/sim/router.py`), but not on real ice.
+The time-aware router. PolarRoute has no time dimension, so a 17-day voyage is planned as though it meets day-zero ice on day 17. The team's fix, a time-expanded graph, exists as designed, and as a working search in the synthetic world (`dakshin/sim/router.py`), but not on real ice.
 
 Nobody forecasts Antarctic ice compression. The repo says Russia's AARI forecasts it for the Barents and Kara Seas only, Canada's system is Arctic-only, and POLARIS never uses the words pressure, compression or ridge. It is white space, and it is also blocked, because there is no observational Antarctic ice-drift product in summer. The team will not ship a compression number without an error bar. Nothing is built.
 
@@ -751,15 +751,15 @@ I read both. Where they differ, the code wins. Several of these the repo has alr
 
 | Topic | What the docs say | What the code does |
 |---|---|---|
-| Which page is the default | `docs/ISIH_README.md` walks through the real-data December 2019 console as the first thing a judge sees | `app.py` serves the synthetic `bridge.html` at `/`, and the real replay lives at `/legacy` |
-| Is there any synthetic data | `TRUE_CLAIMS.md` and the viva guide say no synthetic data anywhere | `isih/sim/` builds a synthetic world for the default console. It is badged on screen. The statement is true of the real-data results only |
+| Which page is the default | `docs/PROTOTYPE_README.md` walks through the real-data December 2019 console as the first thing a judge sees | `app.py` serves the synthetic `bridge.html` at `/`, and the real replay lives at `/legacy` |
+| Is there any synthetic data | `TRUE_CLAIMS.md` and the viva guide say no synthetic data anywhere | `dakshin/sim/` builds a synthetic world for the default console. It is badged on screen. The statement is true of the real-data results only |
 | Training years versus files | "Built on 1,096 real daily satellite files" | The model trains on 2019 and 2020 only (the notebook sets `YEARS = [2019, 2020]`). The 1,096 files (2018 to 2020) are used by the audit and routing |
 | Channel definitions | `features.py` header says channels 1 to 7 are observations at t-1 to t-7 and the innovation uses the t-1 observation | The code uses observations from t back to t-6 and the innovation is `background[t] - observed[t]`. Both give seven lags and are consistent with each other |
 | QA masking end to end | The QA layer is described as the data-quality fix | The routing path masks spillover cells. The training path (`features.py`, `build_dataset.py`) never reads the flag. Flagged open in the corrections register (item 18) |
 | Conformal calibration, ensemble, gradient boosting, 19 channels | Described at length as settled design, and the primer describes them in the present tense | No code implements any of them. `unet.py` defaults describe the final model; the trained one is smaller (flagged open, item 19) |
 | Gradient boosting feature importance | The primer says the team checked that importances match physics | No gradient boosting code exists to have checked |
-| Iceberg exclusion zones in the router | The primer and ADR-010 say injected through `excluded_zones` | Nothing in `isih/` or `models/` uses `excluded_zones` |
-| Iceberg trajectories | The primer reads as if projection is done; the viva guide says no time integrator exists in `drift.py` | `drift.py` has no stepping. `isih/sim/bergs.py` does step bergs, on synthetic forcing |
+| Iceberg exclusion zones in the router | The primer and ADR-010 say injected through `excluded_zones` | Nothing in `dakshin/` or `models/` uses `excluded_zones` |
+| Iceberg trajectories | The primer reads as if projection is done; the viva guide says no time integrator exists in `drift.py` | `drift.py` has no stepping. `dakshin/sim/bergs.py` does step bergs, on synthetic forcing |
 | Berg error growth | `ICEBERG_RESEARCH.md` says a figure of "about 12 km per day" is unverified and must not be used | `sim/bergs.py` grows the exclusion radius at roughly 13 km per day, justified by a 40 km over three days figure "on record". The sim is labelled synthetic, but the number's source is unclear |
 | Berg count in the corridor | 15 in `regime_report.json` | Another doc says 11. The register lists it open (item 21). "In the corridor" is a longitude-band test |
 | Pack sizes | 76 KB mesh, 796 B route, in `DIFFERENTIATION.md` | The correction register replaces the pack figure with a measured 7.8 KB daily pack. The full-corridor refresh is still unmeasured |
@@ -767,7 +767,7 @@ I read both. Where they differ, the code wins. Several of these the repo has alr
 | Which dataset is G02202 | `DATASET.md` section 1.1 heading was corrected to G02202 v6 | The body text and summary table still describe the Sea Ice Index extent product |
 | POLARIS speed limits | `NAVIGATION_RESEARCH.md` lists 11 and 8 knots for PC1 and PC2 | `polaris.py` returns no limit for those two classes |
 | Mapping and tech stack | The primer and team guide mention MapLibre, PMTiles, React, LightGBM, scikit-learn, cryptographic pack signing | The code uses a hand-written canvas chart, and none of those libraries or the signing are used |
-| Ablation | `ISIH_RESULTS.md` says the no-background ablation has not been run | The notebook contains the cell, with no saved outputs. The result is unknown |
+| Ablation | `docs/PROTOTYPE_RESULTS.md` says the no-background ablation has not been run | The notebook contains the cell, with no saved outputs. The result is unknown |
 | `verify_claims.py` | A script that checks quoted numbers against the figure files | It hard-codes a path on someone's machine, so it will not run elsewhere without editing |
 
 
@@ -997,18 +997,18 @@ Each link below was returned by a search or fetched during this work. Where a fe
 
 | Fact | Value | Source |
 |---|---|---|
-| Ship | MV Vasiliy Golovnin, IMO 8723426, beam 22.4 m, 163.9 m long, 16.4 kn service speed (30.4 km/h), old Russian class KM(*) ULA | `isih/ice_meshes.py`, `ISIH_RESULTS.md` |
-| NSIDC grid | 25 km, 332 by 316, EPSG:3412 | `ISIH_README.md` |
-| Satellite files | 1,096 daily files, 2018 to 2020, 0 failed | `ISIH_RESULTS.md` |
-| Model | Residual U-Net, 12 channels, 1,929,601 parameters, trained on 2019 and 2020, T4 GPU | `ISIH_RESULTS.md`, notebook |
-| Skill versus persistence | +18.5% (1 d), +24.9% (3 d), +22.1% (5 d), +30.6% (7 d) | `ISIH_RESULTS.md` |
-| Raw GLORYS12 error | 0.1630 at lead 1, 0.1637 at lead 7 (flat, the leakage clue) | `ISIH_RESULTS.md` |
+| Ship | MV Vasiliy Golovnin, IMO 8723426, beam 22.4 m, 163.9 m long, 16.4 kn service speed (30.4 km/h), old Russian class KM(*) ULA | `dakshin/ice_meshes.py`, `docs/PROTOTYPE_RESULTS.md` |
+| NSIDC grid | 25 km, 332 by 316, EPSG:3412 | `docs/PROTOTYPE_README.md` |
+| Satellite files | 1,096 daily files, 2018 to 2020, 0 failed | `docs/PROTOTYPE_RESULTS.md` |
+| Model | Residual U-Net, 12 channels, 1,929,601 parameters, trained on 2019 and 2020, T4 GPU | `docs/PROTOTYPE_RESULTS.md`, notebook |
+| Skill versus persistence | +18.5% (1 d), +24.9% (3 d), +22.1% (5 d), +30.6% (7 d) | `docs/PROTOTYPE_RESULTS.md` |
+| Raw GLORYS12 error | 0.1630 at lead 1, 0.1637 at lead 7 (flat, the leakage clue) | `docs/PROTOTYPE_RESULTS.md` |
 | Spillover filter | Fires on 100% of days, mean 118 cells a day, 43.2% of days near Bharati | `ice_quality_audit.json` |
 | Bharati closed | 23 of 31 days (74.2%) in Dec 2019; approach closed 0 of 31 | `destination_window.json` |
 | Artifact open days | 4 of the 8 apparent open days | `destination_window.json` |
-| Route | 41 legs, 8.58 days steaming, about 5,813 km, mean ice about 6% in the open ocean | `ISIH_RESULTS.md` |
+| Route | 41 legs, 8.58 days steaming, about 5,813 km, mean ice about 6% in the open ocean | `docs/PROTOTYPE_RESULTS.md` |
 | Reachability cliff | Reachable at 50% limit and above, unreachable at 45% and below | `alternatives.json` |
-| Regret | Static 8.61 d versus daily 9.00 d, regret 0.03 d, one date | `ISIH_RESULTS.md` |
+| Regret | Static 8.61 d versus daily 9.00 d, regret 0.03 d, one date | `docs/PROTOTYPE_RESULTS.md` |
 | Ships compared | Golovnin 8.58 d versus SA Agulhas II 9.86 d on an identical track, fuel about 9% lower for the Agulhas | `vessel_comparison.json` |
 | Icebergs | 33 tracked as of 27 Aug 2026, 15 in the longitude-band corridor, D15A 3,037 km² | `regime_report.json` |
 | Berg regime | Typical (10 m/s wind, 0.1 m/s current): 20 of 33 current-dominated. Storm (30 m/s, 0.05 m/s): 28 of 33 wind-dominated | `regime_report.json` |
@@ -1017,7 +1017,7 @@ Each link below was returned by a search or fetched during this work. Where a fe
 | Marginal band | 7.4 points, one median CDR standard deviation across 70 to 90% ice | `gates.py` |
 | Router runtime | About 9 seconds, about 90 second install | `DECISIONS.md` ADR-009 |
 | Forecast archive | 79 daily CMEMS cycles, 31 Aug to 17 Nov 2026 | `data/cmems_forecast_archive/` |
-| Withdrawn | 17.4-day transit (ship at half speed), "bends around thickest ice" caption, first leakage defence | `ISIH_RESULTS.md`, `TRUE_CLAIMS.md` |
+| Withdrawn | 17.4-day transit (ship at half speed), "bends around thickest ice" caption, first leakage defence | `docs/PROTOTYPE_RESULTS.md`, `TRUE_CLAIMS.md` |
 
 
 ## 16. The demo site you will show the professor
@@ -1034,7 +1034,7 @@ The site in this repo (`antarticaprojectMoes`, published with GitHub Pages) is a
 
 ### 16.2 How the data gets onto the site
 
-`tools/build_data.py` reads the source repo. It takes every file in `data/cmems_forecast_archive/`, block-averages the 1/12° fields to 0.25° cells for concentration, 0.5° for thickness and 1° for ice drift, and writes one small binary file per forecast cycle into `data/cycles/`. It also copies the 2019 result files from `isih/figures/` and the USNIC iceberg list into `data/static.json`. Rerun it after each daily harvest to bring the site up to date.
+`tools/build_data.py` reads the source repo. It takes every file in `data/cmems_forecast_archive/`, block-averages the 1/12° fields to 0.25° cells for concentration, 0.5° for thickness and 1° for ice drift, and writes one small binary file per forecast cycle into `data/cycles/`. It also copies the 2019 result files from `dakshin/figures/` and the USNIC iceberg list into `data/static.json`. Rerun it after each daily harvest to bring the site up to date.
 
 While doing that it also computes two things that were not in the repo before. The first is a season series of ice at the Bharati approach. The second is forecast drift by lead time: each forecast is compared with the analysis issued later for the same day, using mean absolute error and the integrated ice-edge error (IIEE, Goessling et al., 2016). Be careful how you describe this second one. It compares the forecast with the same system's own later analysis, not with satellite observation. It tells you how fast the forecast changes its mind, not how accurate it is.
 
@@ -1042,9 +1042,9 @@ While doing that it also computes two things that were not in the repo before. T
 
 The routing, POLARIS and gate logic are ported from the Python to `assets/js/model.js`:
 
-- The router is the time-aware Dijkstra from `isih/sim/router.py`, including its vessel speed curve and fuel index. In the source repo it runs on a synthetic world. Here it runs on the real forecast archive. For each cell, it looks up the forecast ice for the hour the ship would get there.
-- POLARIS is `isih/polaris.py`: the Table 1.3 values copied exactly, the single-stage reduction, and the PC4-to-IA band. There is no default ice stage. The officer has to declare one.
-- The gates and route health follow `isih/gates.py` and `isih/decision.py`, including the 7.4-point marginal band and the rule that UNKNOWN caps health at DEGRADED.
+- The router is the time-aware Dijkstra from `dakshin/sim/router.py`, including its vessel speed curve and fuel index. In the source repo it runs on a synthetic world. Here it runs on the real forecast archive. For each cell, it looks up the forecast ice for the hour the ship would get there.
+- POLARIS is `dakshin/polaris.py`: the Table 1.3 values copied exactly, the single-stage reduction, and the PC4-to-IA band. There is no default ice stage. The officer has to declare one.
+- The gates and route health follow `dakshin/gates.py` and `dakshin/decision.py`, including the 7.4-point marginal band and the rule that UNKNOWN caps health at DEGRADED.
 
 Sea state is not in the harvest, so the router applies no wave penalty, and every ETA is a lower bound. The trained U-Net is not on the site, because its weights live on Kaggle. So the Bridge shows the raw CMEMS forecast and says so.
 
