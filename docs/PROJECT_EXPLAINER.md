@@ -657,7 +657,7 @@ The gate design (section 7.2) treats missing evidence as a reason to be less con
 
 ## 10. What is new and what is standard practice
 
-Be disciplined here. A professor will separate "new to this hackathon" from "new to the field".
+Be disciplined here. A professor will separate "new to this project" from "new to the field".
 
 ### 10.1 Standard practice
 
@@ -785,7 +785,7 @@ The ice moves, the ship can't turn back quickly, and there is no port to shelter
 We start from it. Our model's job is to learn where that forecast is wrong. We also plan to add a measured uncertainty band that Copernicus does not publish in a form a router can use. But I should be straight: that band is designed, not built, and our current skill numbers do not yet prove we beat the live Copernicus forecast.
 
 **4. Why correct a model instead of predicting from scratch?**
-Because the physics model already assimilates live satellite data, and beating it from scratch in a hackathon is a losing bet. Predicting its error is a smaller problem, needs a much smaller network, and if the correction is zero we reproduce its skill. We can't be much worse than the baseline by construction.
+Because the physics model already assimilates live satellite data, and beating it from scratch on this timeline is a losing bet. Predicting its error is a smaller problem, needs a much smaller network, and if the correction is zero we reproduce its skill. We can't be much worse than the baseline by construction.
 
 **5. What is a U-Net, and why that one?**
 A network for image-shaped data. It shrinks the image to see the big picture, expands it back, and passes fine detail across by skip connections. It was made for finding sharp boundaries, and the ice edge is the boundary that matters. The same family is used by IceNet and ANTSIC-UNet. Honestly, we didn't run a ConvLSTM or a transformer for comparison. We chose it on the literature, the grid shape, our small data, and the fact that a correction needs little capacity.
@@ -897,7 +897,7 @@ Technically, that the uncertainty calibration fails or that the corrected foreca
 | IIEE | Integrated ice-edge error, a score for how many cells have the ice edge wrong. |
 | Innovation | Background minus newest observation at a cell: how wrong the background is now. |
 | Iridium | A low-orbit satellite phone network that works at the poles, with limited bandwidth. |
-| ISIH | The internal hackathon round and the name of the prototype folder. |
+| Prototype (formerly "ISIH") | The September prototype; its folder is now `dakshin/`. |
 | ISEA | Indian Scientific Expedition to Antarctica. |
 | Kaggle | A website with free notebooks and GPUs. |
 | Lead time | How far ahead a forecast looks. |
