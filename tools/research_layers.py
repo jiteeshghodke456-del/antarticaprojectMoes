@@ -221,14 +221,14 @@ def build(SRC: Path, OUT: Path, cycles: list[dict], missing: list[dict]) -> dict
 
 # ==================================================================== AI corrected edges
 def _ai(SRC: Path, R: Path, missing: list[dict]) -> dict | None:
-    """15 % edges of the U-Net-corrected forecast (scripts/corrected_forecast.py
-    in the source repo), on the model-native 25 km grid, for the one cycle it
-    was produced for."""
-    npz_f = SRC / "dakshin" / "figures" / "corrected_forecast.npz"
-    js_f = SRC / "dakshin" / "figures" / "corrected_forecast.json"
+    """15 % edges of the U-Net-corrected forecast on the model-native 25 km
+    grid, for every archived cycle with a full satellite history
+    (scripts/corrected_forecast.py --all in the source repo)."""
+    npz_f = SRC / "dakshin" / "figures" / "corrected_all.npz"
+    js_f = SRC / "dakshin" / "figures" / "corrected_all.json"
     files = sorted((SRC / "data" / "nsidc_nrt").glob("sic_pss25_*.nc"))
     if not (npz_f.exists() and js_f.exists() and files):
-        missing.append({"layer": "ai", "reason": "dakshin/figures/corrected_forecast.{npz,json} (or nsidc_nrt grid) not in the source repo"})
+        missing.append({"layer": "ai", "reason": "dakshin/figures/corrected_all.{npz,json} (or nsidc_nrt grid) not in the source repo"})
         return None
     from pyproj import Transformer
     ds0 = xr.open_dataset(files[0])
@@ -238,21 +238,22 @@ def _ai(SRC: Path, R: Path, missing: list[dict]) -> dict | None:
     to_ll = Transformer.from_crs(crs["proj4text"], "EPSG:4326", always_xy=True)
     meta = json.loads(js_f.read_text())
     z = np.load(npz_f)
-    edges, leads = {}, []
-    for lead in (1, 3, 5, 7):
-        k = f"corrected_lead{lead}"
-        if k in z:
-            edges[str(lead)] = _contours(x, y, np.where(np.isfinite(z[k]), z[k], np.nan), [0.15],
-                                         to_lonlat=lambda a, b: to_ll.transform(a, b), nd=3, min_pts=3)
-            leads.append(lead)
+    edges, leads = {}, set()
+    for key in z.files:                       # c<YYYYMMDD>_l<lead>, uint8 sic*200
+        d8, lead = key[1:].split("_l")
+        cyc = f"{d8[:4]}-{d8[4:6]}-{d8[6:]}"
+        raw = z[key].astype(np.float32)
+        sic = np.where(raw == 255, np.nan, raw / 200.0)
+        edges.setdefault(cyc, {})[lead] = _contours(
+            x, y, sic, [0.15], to_lonlat=lambda a, b: to_ll.transform(a, b), nd=3, min_pts=3)
+        leads.add(int(lead))
     (R / "verif").mkdir(exist_ok=True)
     (R / "verif" / "ai_edges.json").write_text(json.dumps(edges, separators=(",", ":")))
-    return {"cycle": meta["cycle"], "leads": leads, "file": "verif/ai_edges.json",
+    return {"cycles": sorted(edges), "leads": sorted(leads), "file": "verif/ai_edges.json",
             "bytes": (R / "verif" / "ai_edges.json").stat().st_size,
             "grid": "25 km NSIDC (model-native); the correction does not add resolution",
-            "decision": {"satellite_day0_reachable": meta["satellite_day0_reachable"],
-                         "station_reachable": {k: v["station_reachable"] for k, v in meta["leads"].items()}},
-            "source": "scripts/corrected_forecast.py, checkpoints Release model-v0.1 (2026-11-21 re-run)"}
+            "verification": meta.get("verification"),
+            "source": "scripts/corrected_forecast.py --all, checkpoints Release model-v0.1"}
 
 
 # ==================================================================== analysis currents

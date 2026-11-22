@@ -182,7 +182,7 @@ const modelData = (cy) => { const c = VF()?.model.cycles[cy]; return c ? need(`m
 const modelEdges = (cy) => { const c = VF()?.model.cycles[cy]; return c ? need(`edges:${cy}`, () => loadJSON(`data/research/${c.edges}`)) : null; };
 // AI-corrected 15% edge: exists only for the one cycle + leads the U-Net ran on
 const AI = () => RES()?.ai;
-const aiAt = (f) => { const a = AI(); return a && f && f.cycle.cycle === a.cycle && a.leads.includes(S.lead) ? a : null; };
+const aiAt = (f) => { const a = AI(); return a && f && a.cycles.includes(f.cycle.cycle) && a.leads.includes(S.lead) ? a : null; };
 const aiEdges = () => (AI() ? need("aiEdges", () => loadJSON(`data/research/${AI().file}`)) : null);
 
 // Is (cycle, lead) verifiable against a satellite day?
@@ -351,7 +351,7 @@ function drawOverlay(f) {
     }
   }
   if (S.layers.edges && aiAt(f)) {
-    const L = aiEdges()?.[String(S.lead)];
+    const L = aiEdges()?.[f.cycle.cycle]?.[String(S.lead)];
     if (L) drawPolylines(ctx, P, L, { colour: "#c983f7", width: 2, dash: [2, 3], halo: "rgba(8,16,28,0.85)" });
   }
   if (S.layers.ref2019) {
