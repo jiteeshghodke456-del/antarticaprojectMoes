@@ -617,7 +617,11 @@ function renderFinding() {
     el.innerHTML = `<div class="verdict">No route finding</div><p>${S.stat.missing.find((m) => m.layer === "real_route.json")?.reason ?? "real_route.json was not built"}.</p>`;
     return;
   }
-  const closed = R.approach_closed_at_ice_limit, g = R.weather_gate, d = (x) => fmtDate(x, { day: "numeric", month: "long", year: "numeric" });
+  // Since router commit 478ecd2 a route "arrives" within one lattice cell of a
+  // station ashore, so a short-of-station track no longer sets the closed flag;
+  // treat ending well off the station as closed for the verdict shown here.
+  const short = (R.route_ends_km_from_station ?? 0) > 10;
+  const closed = R.approach_closed_at_ice_limit || short, g = R.weather_gate, d = (x) => fmtDate(x, { day: "numeric", month: "long", year: "numeric" });
   // The finding belongs to ONE forecast. Viewing another cycle keeps a quiet
   // reference instead of shouting a red banner about a different day.
   if (S.cycle && S.cycle.cycle !== R.cycle) {
@@ -632,7 +636,7 @@ function renderFinding() {
     <div class="verdict">${closed ? "Approach closed" : "Approach open"}<small>${d(R.cycle)} forecast</small></div>
     <div>
       <p>${closed
-        ? `Spring ice over the ${S.rules.vessel.max_ice_conc_pct}% working limit closes the Bharati approach. The project's router gets no closer than <b>${R.closest_approach_km} km</b> from the station.`
+        ? `Spring ice over the ${S.rules.vessel.max_ice_conc_pct}% working limit closes the Bharati approach. The project's router gets no closer than <b>${R.closest_approach_km ?? R.route_ends_km_from_station} km</b> from the station${short && !R.approach_closed_at_ice_limit ? " (its track counts as arrived under the one-lattice-cell rule; the 0.55° lattice cannot resolve the final approach)" : ""}.`
         : `The project's router reaches Bharati on this forecast.`}</p>
       <div class="facts">
         <span>Weather gate <b class="state-${gs}">${g.state}</b></span>
