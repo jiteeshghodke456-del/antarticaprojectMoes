@@ -426,7 +426,15 @@ function bergInfo({ b, t, hit }) {
 }
 const addDays = (iso, n) => { const d = new Date(iso + "T00:00:00Z"); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10); };
 
-const bergsInBox = () => (S.lay.bergs?.items ?? []).filter((b) => b.lon >= BOX.lon0 && b.lon <= BOX.lon1 && b.lat <= BOX.lat1);
+// Weekly USNIC fixes: show the newest fix dated on or before the viewed cycle.
+const bergFix = () => {
+  const B = S.lay.bergs, iss = B?.issues, iso = current?.cycle.cycle?.replaceAll("-", "");
+  if (!iss?.length || !iso) return B;   // old layers.json without per-week issues
+  let pick = iss[0];
+  for (const f of iss) if (f.issue <= iso) pick = f;
+  return pick;
+};
+const bergsInBox = () => (bergFix()?.items ?? []).filter((b) => b.lon >= BOX.lon0 && b.lon <= BOX.lon1 && b.lat <= BOX.lat1);
 // Near = the uncertainty circle comes within 50 nm (92.6 km) of the forecast-aware track.
 function nearTrack(b, day) {
   const R = S.result; if (!R || !R.forecast) return false;
@@ -494,7 +502,7 @@ function renderBergs() {
   if (!B) { $("#bergsrc").textContent = ""; $("#bergs").innerHTML = `<li class="note">${reasonFor("bergs")}</li>`; return; }
   const items = bergsInBox(), F = S.result.forecast, day = current.cycle.valid[S.lead];
   const rows = items.map((b) => ({ b, d: F ? minDistKm(b, F.legs) : null, r: bergRadiusKm(b, day) })).sort((a, z) => (a.d ?? 1e9) - (z.d ?? 1e9));
-  $("#bergsrc").textContent = `USNIC fix of ${fmtDate(B.items[0]?.observed ?? day, { day: "numeric", month: "short", year: "numeric" })}`;
+  $("#bergsrc").textContent = `USNIC fix of ${fmtDate(bergFix()?.items[0]?.observed ?? day, { day: "numeric", month: "short", year: "numeric" })}`;
   $("#bergs").innerHTML = rows.map(({ b, d, r }) => `<li class="${nearTrack(b, day) ? "near" : ""}"><span>${b.name}, ${b.len_nm}×${b.wid_nm} nm</span><span>${d === null ? "–" : (d / 1.852).toFixed(0) + " nm from track"}${r ? `, ±${r.toFixed(0)} km` : ""}</span></li>`).join("")
     + `<li class="note">Circles are centred on the last USNIC fix and grow ${B.uncertainty_km_per_day} km a day after it: the drift model's median error in the berg hindcast (${S.stat.berg_hindcast?.n_ok ?? "?"} scored segments), where staying put, the persistence forecast, beat the model. Red: circle within 50 nm of the forecast-aware track on the day shown. USNIC tracks only bergs over about 10 nm; growlers and bergy bits are in no satellite product.</li>`;
 }

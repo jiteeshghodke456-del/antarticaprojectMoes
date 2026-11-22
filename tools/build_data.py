@@ -147,15 +147,20 @@ for k, t in enumerate(latest["valid"]):
     outlook.append(row)
 
 # ---------------------------------------------------------------- icebergs
-# Latest weekly USNIC issue, parsed like models/iceberg/catalogue.py:load_usnic
-# (utf-8-sig for the BOM, NM -> m, rows with a missing or zero axis dropped).
+# Every archived weekly USNIC issue, parsed like models/iceberg/catalogue.py:
+# load_usnic (utf-8-sig for the BOM, NM -> m, rows with a missing or zero axis
+# dropped). The chart picks the newest issue dated on or before the viewed
+# forecast cycle, so bergs move week to week when browsing issued dates.
 NM_M = 1852.0
 missing = []   # layers we could not build, and why: the page shows these, it never invents them
 berg_csvs = sorted((SRC / "data" / "icebergs" / "archive").glob("AntarcticIcebergs_*.csv"))
-bergs, berg_csv = [], (berg_csvs[-1] if berg_csvs else None)
-if berg_csv:
+berg_csv = berg_csvs[-1] if berg_csvs else None
+
+
+def parse_usnic(path):
     from datetime import datetime
-    with open(berg_csv, encoding="utf-8-sig") as fh:
+    out = []
+    with open(path, encoding="utf-8-sig") as fh:
         for r in csv.DictReader(fh):
             r = {k.strip(): (v or "").strip() for k, v in r.items()}
             try:
@@ -165,13 +170,20 @@ if berg_csv:
                 continue
             if L <= 0 or W <= 0:
                 continue
-            bergs.append({"name": r["Iceberg"], "len_nm": max(L, W), "wid_nm": min(L, W),
-                          "length_m": max(L, W) * NM_M, "width_m": min(L, W) * NM_M,
-                          "lat": la, "lon": lo, "area_km2": float(r["Area (sqKM)"]),
-                          "observed": datetime.strptime(r["Last Update"], "%m/%d/%Y").date().isoformat()})
-    if not all(-90 <= x["lat"] < 0 for x in bergs):   # same guard as load_usnic
-        raise ValueError(f"{berg_csv.name}: non-southern latitude in the Antarctic feed")
+            out.append({"name": r["Iceberg"], "len_nm": max(L, W), "wid_nm": min(L, W),
+                        "length_m": max(L, W) * NM_M, "width_m": min(L, W) * NM_M,
+                        "lat": la, "lon": lo, "area_km2": float(r["Area (sqKM)"]),
+                        "observed": datetime.strptime(r["Last Update"], "%m/%d/%Y").date().isoformat()})
+    if not all(-90 <= x["lat"] < 0 for x in out):   # same guard as load_usnic
+        raise ValueError(f"{path.name}: non-southern latitude in the Antarctic feed")
+    return out
+
+
+if berg_csv:
+    berg_issues = [{"issue": p.stem.split("_")[-1], "items": parse_usnic(p)} for p in berg_csvs]
+    bergs = berg_issues[-1]["items"]
 else:
+    berg_issues, bergs = [], []
     missing.append({"layer": "bergs", "reason": "no data/icebergs/archive/AntarcticIcebergs_*.csv in the source repo"})
 
 # ---------------------------------------------------------------- 2019 validation outputs
@@ -202,6 +214,8 @@ if berg_csv:
     berg_layer = {"source": f"US National Ice Center Antarctic iceberg list ({berg_csv.name})",
                   "provenance": f"data/icebergs/archive/{berg_csv.name}",
                   "issue": berg_csv.stem.split("_")[-1], "items": bergs,
+                  "issues": berg_issues,
+                  "issue_rule": "the chart shows the newest weekly fix dated on or before the viewed forecast cycle",
                   "uncertainty_km_per_day": None if berg_hc is None else berg_hc["uncertainty_radius_km_per_day"],
                   "uncertainty_provenance": "dakshin/figures/berg_hindcast.json: uncertainty_radius_km_per_day "
                                             "(median drift-model error over the USNIC hindcast)",
