@@ -275,21 +275,15 @@ export function destination(lat, lon, bearingDeg, km) {
 // Forecast drift for one berg as a day-dot chain (IcySea-style): a bold line
 // through the daily forecast positions with a dot per day, graded from deep
 // (day 1) to pale (last day); day 0 is the USNIC fix, drawn by drawBerg on
-// top. Dots and line have a fixed screen size, so the chain never shrinks
-// below legibility. If the whole chain spans fewer than MIN_SPAN px it is
-// drawn magnified about the fix and labelled "×k" (a schematic, flagged as
-// such; the inspector gives true positions). Grounded/unknown bergs stop
-// where the model stops them, with a held (anchor) marker.
+// top. Positions are always true to the grid (no magnification), so zooming
+// in reads the real route; short chains are small at 1x by design.
+// Grounded/unknown bergs stop where the model stops them, with a held
+// (anchor) marker.
 export const DAY_DEEP = [11, 79, 108], DAY_PALE = [226, 241, 247];
 export const dayColour = (k, n) => DAY_DEEP.map((c, i) => Math.round(c + (DAY_PALE[i] - c) * (n <= 1 ? 0 : (k - 1) / (n - 1))));
-const MIN_SPAN = 24;
 export function drawBergChain(ctx, proj, t, hits = null) {
   if (!t.daily_positions?.length) return;
-  const raw = t.daily_positions.map((p) => proj.fwd(p.lat, p.lon));
-  const [x0, y0] = raw[0];
-  let span = 0; for (const [x, y] of raw) span = Math.max(span, Math.hypot(x - x0, y - y0));
-  const k = span > 0 && span < MIN_SPAN ? Math.min(25, Math.ceil(MIN_SPAN / span)) : 1;
-  const pts = raw.map(([x, y]) => [x0 + (x - x0) * k, y0 + (y - y0) * k]);
+  const pts = t.daily_positions.map((p) => proj.fwd(p.lat, p.lon));
   const n = t.daily_positions.at(-1).day;
   ctx.save(); ctx.lineJoin = "round"; ctx.lineCap = "round";
   const path = () => { ctx.beginPath(); pts.forEach(([x, y], i) => (i ? ctx.lineTo(x, y) : ctx.moveTo(x, y))); };
@@ -301,7 +295,7 @@ export function drawBergChain(ctx, proj, t, hits = null) {
     ctx.beginPath(); ctx.arc(x, y, 3.2, 0, Math.PI * 2);
     ctx.fillStyle = `rgb(${dayColour(p.day, Math.max(n, 9))})`; ctx.fill();
     ctx.lineWidth = 1.3; ctx.strokeStyle = "#0b1a2a"; ctx.stroke();
-    hits?.push({ x, y, berg: t.berg, day: p.day, lat: p.lat, lon: p.lon, k });
+    hits?.push({ x, y, berg: t.berg, day: p.day, lat: p.lat, lon: p.lon });
   });
   if (t.status !== "ok") {
     const [xs, ys] = pts.at(-1);
@@ -309,12 +303,7 @@ export function drawBergChain(ctx, proj, t, hits = null) {
     ctx.beginPath(); ctx.rect(xs - 6, ys - 6, 12, 12); ctx.fill(); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(xs, ys - 3.5); ctx.lineTo(xs, ys + 3); ctx.moveTo(xs - 3, ys + 1); ctx.quadraticCurveTo(xs, ys + 4.5, xs + 3, ys + 1); ctx.moveTo(xs - 2, ys - 2); ctx.lineTo(xs + 2, ys - 2);
     ctx.lineWidth = 1.2; ctx.stroke();
-    hits?.push({ x: xs, y: ys, berg: t.berg, held: true, k });
-  }
-  if (k > 1) {
-    const [xe, ye] = pts.at(-1);
-    ctx.font = font("2xs"); ctx.lineWidth = 2.5; ctx.strokeStyle = "rgba(255,255,255,0.9)";
-    ctx.strokeText(`×${k}`, xe + 6, ye + 3); ctx.fillStyle = "#33475b"; ctx.fillText(`×${k}`, xe + 6, ye + 3);
+    hits?.push({ x: xs, y: ys, berg: t.berg, held: true });
   }
   ctx.restore();
 }

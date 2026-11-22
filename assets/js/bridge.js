@@ -412,7 +412,7 @@ function bergInfo({ b, t, hit }) {
   const day = current.cycle.valid[S.lead], r = bergRadiusKm(b, day);
   const rows = [`<b class="pos">Iceberg ${b.name}</b>`];
   if (hit.held) rows.push(`<b>Held: model stops this berg here</b>`);
-  else if (hit.day) rows.push(`<b>Forecast day ${hit.day}</b> (${fmtDate(addDays(t ? S.lay.berg_tracks.cycle : day, hit.day), { day: "numeric", month: "short" })}): ${(-hit.lat).toFixed(2)}°S ${hit.lon.toFixed(2)}°E${hit.k > 1 ? `, chain drawn ×${hit.k}` : ""}`);
+  else if (hit.day) rows.push(`<b>Forecast day ${hit.day}</b> (${fmtDate(addDays(t ? S.lay.berg_tracks.cycle : day, hit.day), { day: "numeric", month: "short" })}): ${(-hit.lat).toFixed(2)}°S ${hit.lon.toFixed(2)}°E`);
   else rows.push(`USNIC fix ${fmtDate(b.observed, { day: "numeric", month: "short" })} (day 0)`);
   rows.push(`Area <b>${t?.area_km2 ?? b.area_km2} km²</b>, ${b.len_nm}×${b.wid_nm} nm${r ? `, uncertainty ±${r.toFixed(0)} km` : ""}`);
   if (!t) rows.push(`<span class="muted">No drift forecast for this berg on this cycle</span>`);
@@ -845,13 +845,13 @@ async function main() {
     S.sicMode = b.dataset.sicmode; refresh({ recompute: false });
   }));
   $("#windsteps").addEventListener("click", (e) => { const b = e.target.closest("[data-wstep]"); if (!b || b.disabled) return; S.windStep = +b.dataset.wstep; refresh({ recompute: false }); });
-  // Play: step the forecast day every 1.5 s, animating whatever layers are on.
+  // Replay: step the forecast day every 0.45 s, animating whatever layers are on.
   let playT = 0;
-  const stopPlay = () => { clearInterval(playT); playT = 0; $("#play").setAttribute("aria-pressed", "false"); $("#play").setAttribute("aria-label", "Play the forecast days"); };
+  const stopPlay = () => { clearInterval(playT); playT = 0; $("#play").setAttribute("aria-pressed", "false"); $("#play").setAttribute("aria-label", "Replay the forecast days"); };
   $("#play").addEventListener("click", () => {
     if (playT) return stopPlay();
     $("#play").setAttribute("aria-pressed", "true"); $("#play").setAttribute("aria-label", "Pause");
-    playT = setInterval(() => { if (!current) return; S.lead = (S.lead + 1) % current.leads; refresh({ recompute: false }); }, 1500);
+    playT = setInterval(() => { if (!current) return; S.lead = (S.lead + 1) % current.leads; refresh({ recompute: false }); }, 450);
   });
   for (const id of ["#leadPrev", "#leadNext", "#cyclePrev", "#cycleNext", "#cycle"]) $(id).addEventListener("pointerdown", stopPlay);
   $("#pickstart").addEventListener("click", () => {
