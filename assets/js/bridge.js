@@ -566,6 +566,14 @@ function renderLegend() {
   if (S.layers.depth) keys.push(`<span><i class="swatch-hatch"></i>Under ${S.lay.depth?.min_depth_m} m</span>`, `<span><i class="swatch-line iso"></i>${RES()?.bathy?.isobaths.levels_m.join(", ") ?? ""} m isobaths</span>`);
   if (S.layers.edges && f && verifAt(f)) keys.push(`<span><i class="swatch-line edge-sat"></i>Satellite 15% edge</span>`, `<span><i class="swatch-line edge-mod"></i>Model 15% edge</span>`);
   if (S.layers.edges && aiAt(f)) keys.push(`<span><i class="swatch-line edge-ai"></i>AI-corrected 15% edge (25 km)</span>`);
+  // Say why the AI edge is absent rather than leaving a silent gap: the model
+  // needs the cycle's day-0 satellite file, which publishes ~1 day late, and a
+  // measured stale-history run was rejected (worse than raw at lead 1).
+  else if (S.layers.edges && AI() && f) {
+    keys.push(AI().cycles.includes(f.cycle.cycle)
+      ? `<span class="muted">AI edge drawn at D+${AI().leads.join(", D+")} (one checkpoint per lead)</span>`
+      : `<span class="muted">AI edge: none for this cycle — needs the day-0 satellite file (publishes ~1 day late); running on stale history measured worse than the raw forecast at day 1</span>`);
+  }
   cards.push(`<div class="card keys">${keys.join("")}</div>`);
   $("#legend").innerHTML = cards.join("");
 }
